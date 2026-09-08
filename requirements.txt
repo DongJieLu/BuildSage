@@ -1,0 +1,58 @@
+# ============================================================
+# BuildSage 装机参谋 依赖清单
+# 架构：LangChain 1.x + LangGraph 管道 / 结构化规格库 + 非结构化攻略混合 RAG
+# 说明：分批安装；P0-P1 仅需基础节 + 解析节；P2 起补模型与向量库；P5 补评估观测。
+# ============================================================
+
+# --- Web 框架 ---
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9        # 文件上传 multipart
+httpx>=0.27                    # SSE 测试客户端 / LLM 后端 HTTP
+
+# --- 配置 ---
+pydantic>=2.6
+pydantic-settings>=2.2
+python-dotenv>=1.0
+
+# --- LangChain 编排栈（本项目的核心技术选型）---
+langchain>=1.0
+langchain-core>=1.0
+langchain-classic>=1.0         # v1 起 EnsembleRetriever / MultiQueryRetriever / HyDE 等经典组件的兼容包
+langgraph>=1.0                 # 四通道确定性管道编排
+langchain-openai>=1.0          # DeepSeek 走 OpenAI 兼容接口
+langchain-community>=0.4       # BM25Retriever 等
+langchain-huggingface>=0.2     # BGE-M3 嵌入 + bge-reranker 交叉编码（sentence-transformers 封装）
+langchain-chroma>=0.2          # 向量库集成
+rank-bm25>=0.2                 # BM25Retriever 依赖
+
+# --- LLM / Embedding / Rerank 底层 ---
+openai>=1.30
+sentence-transformers>=2.7     # BGE-M3 / bge-reranker-large 底层模型加载
+
+# --- 向量库 ---
+chromadb>=0.5                  # 开发期向量库（schema 与 Milvus 对齐，生产可切换）
+
+# --- 规格库抽取与入库 ---
+beautifulsoup4>=4.12           # Wikipedia / PassMark 规格表抽取
+lxml>=5.0                      # 解析加速
+
+# --- 关系库 / 缓存 ---
+pymysql>=1.1
+sqlalchemy>=2.0
+redis>=5.0
+
+# --- 文档解析 ---
+pypdf>=4.0
+python-docx>=1.1
+markdown>=3.5
+
+# --- 评估 ---
+ragas>=0.2                     # 非结构化链路评估（Faithfulness / Answer Relevancy / Context Precision）
+
+# --- 可观测 ---
+langfuse>=2.50                 # 全链路追踪（自托管，docker-compose 拉起）
+
+# --- 测试 ---
+pytest>=8.0
+pytest-asyncio>=0.23

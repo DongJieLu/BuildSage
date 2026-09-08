@@ -1,0 +1,52 @@
+/* 全局主题：简约黑白（类 Apple 设计）。
+   覆盖 Element Plus 默认蓝色主色为近黑灰阶，统一圆角与字体。 */
+
+:root {
+  /* 主色改为 Apple 近黑，去蓝 */
+  --el-color-primary: #1d1d1f;
+  --el-color-primary-light-3: #3d3d3f;
+  --el-color-primary-light-5: #6e6e73;
+  --el-color-primary-light-7: #a1a1a6;
+  --el-color-primary-light-8: #c7c7cc;
+  --el-color-primary-light-9: #f5f5f7;
+  --el-color-primary-dark-2: #000000;
+
+  /* 语义色：仅保留少量，弱化饱和度 */
+  --el-color-danger: #ff3b30;
+  --el-color-success: #34c759;
+  --el-color-warning: #ff9f0a;
+
+  /* 圆角偏大，Apple 风格 */
+  --el-border-radius-base: 10px;
+  --el-border-radius-small: 8px;
+  --el-border-radius-round: 20px;
+
+  /* 中性色 */
+  --el-text-color-primary: #1d1d1f;
+  --el-text-color-regular: #3d3d3f;
+  --el-text-color-secondary: #6e6e73;
+  --el-border-color: #d2d2d7;
+  --el-border-color-light: #e5e5e7;
+  --el-border-color-lighter: #f0f0f2;
+  --el-fill-color-light: #f5f5f7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Helvetica Neue', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  background: #f5f5f7;
+  color: #1d1d1f;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

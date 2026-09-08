@@ -1,0 +1,57 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: buildsage-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: buildsage_root
+      MYSQL_DATABASE: buildsage
+      MYSQL_USER: buildsage
+      MYSQL_PASSWORD: buildsage
+      TZ: Asia/Shanghai
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pbuildsage_root"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    container_name: buildsage-redis
+    ports:
+      - "6380:6379"
+    command: redis-server --appendonly yes
+
+  # 应用服务（可选）：开发期建议本地直接跑，需拉起时用 --profile app
+  app:
+    build: .
+    container_name: buildsage-app
+    profiles: ["app"]
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: buildsage
+      MYSQL_PASSWORD: buildsage
+      MYSQL_DB: buildsage
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CHROMA_PERSIST_DIR: /app/data/chroma
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/app/data/chroma
+      - model_cache:/root/.cache/huggingface
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  mysql_data:
+  chroma_data:
+  model_cache:
