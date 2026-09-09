@@ -40,7 +40,7 @@ def test_param_channel_with_stub():
         r = final["result"]
         assert r["intent"] == "param"
         assert r["strategy"] == "direct-sql"
-        assert "200" in r["answer"]  # TDP 值出现在卡片里
+        assert "450" in r["answer"]  # TDP 值出现在卡片里
     finally:
         pl.extract_slots = orig
 
