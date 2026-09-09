@@ -56,7 +56,7 @@ CONFIG_SYSTEM_PROMPT = (
 def extract_slots(question: str, llm=None) -> SlotExtraction:
     try:
         model = llm or get_chat_model()
-        return model.with_structured_output(SlotExtraction).invoke(
+        return model.with_structured_output(SlotExtraction, method="function_calling").invoke(
             [{"role": "system", "content": SLOT_SYSTEM_PROMPT}, {"role": "user", "content": question}]
         )
     except Exception as exc:  # noqa: BLE001
@@ -67,7 +67,7 @@ def extract_slots(question: str, llm=None) -> SlotExtraction:
 def extract_config(question: str, history: list | None = None, llm=None) -> BuildConfig:
     try:
         model = llm or get_chat_model()
-        return model.with_structured_output(BuildConfig).invoke(
+        return model.with_structured_output(BuildConfig, method="function_calling").invoke(
             [
                 {"role": "system", "content": CONFIG_SYSTEM_PROMPT},
                 {"role": "user", "content": _with_history(question, history)},

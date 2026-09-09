@@ -102,8 +102,14 @@ def build_graph(
         cfg = extract_config(state["question"], state.get("history"))
         events = [{"type": "progress", "stage": "config_extraction",
                    "detail": " ".join(filter(None, [cfg.cpu, cfg.gpu, cfg.motherboard, cfg.memory, cfg.psu]))}]
-        parts: list[dict] = []
         specs: dict[str, dict | None] = {}
+
+        def _norm_row(row: dict | None) -> dict | None:
+            """DB 行的逗号分隔 memory_types 字符串 → 列表，避免被逐字符迭代。"""
+            if row and isinstance(row.get("memory_types"), str):
+                row["memory_types"] = [t for t in row["memory_types"].split(",") if t]
+            return row
+
         for cat, name in (("cpu", cfg.cpu), ("gpu", cfg.gpu), ("motherboard", cfg.motherboard),
                           ("memory", cfg.memory), ("psu", cfg.psu)):
             if not name:
@@ -115,7 +121,7 @@ def build_graph(
             elif cat == "psu" and name.rstrip("Ww").isdigit():
                 specs[cat] = {"name": name, "rated_w": int(name.rstrip("Ww"))}
             else:
-                specs[cat] = spec_repo.best_match(cat, name)
+                specs[cat] = _norm_row(spec_repo.best_match(cat, name))
         if not any(specs.values()):
             return _result(state, answer="未能识别配置清单中的硬件型号，请补充具体型号。",
                            intent="compat", strategy="config-miss", events=events, rejected=True)

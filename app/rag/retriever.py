@@ -67,13 +67,11 @@ def _vector_retriever(category: str | None) -> BaseRetriever:
 def _reranker_compressor():
     """bge-reranker-large 精排压缩器（本地加载失败返回 None，降级为融合结果）。"""
     try:
-        from langchain_huggingface import HuggingFaceCrossEncoder
         from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
 
-        from app.config import get_settings
+        from app.rerank.bge_rerank import BGEReranker
 
-        model = HuggingFaceCrossEncoder(model_name=get_settings().rerank_model_name)
-        return CrossEncoderReranker(model=model, top_n=5)
+        return CrossEncoderReranker(model=BGEReranker(), top_n=5)
     except Exception as exc:  # noqa: BLE001
         logger.warning("重排模型加载失败，降级为 RRF 融合结果: %s", exc)
         return None

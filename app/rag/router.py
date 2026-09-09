@@ -83,7 +83,7 @@ class Router:
     def _classify(self, question: str) -> RouteDecision:
         try:
             llm = self._llm or get_chat_model()
-            structured = llm.with_structured_output(RouteDecision)
+            structured = llm.with_structured_output(RouteDecision, method="function_calling")
             decision = structured.invoke(
                 [{"role": "system", "content": ROUTE_SYSTEM_PROMPT}, {"role": "user", "content": question}]
             )
