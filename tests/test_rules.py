@@ -128,3 +128,48 @@ def test_r2_cpu_only_pass_when_matching():
     cpu_5500x3d = {"name": "AMD Ryzen 5 5500X3D", "socket": "AM4", "tdp_w": 105, "memory_types": ["DDR4"]}
     r = by_rule(check_compat(cpu=cpu_5500x3d, memory=MEM_DDR4), "R2")
     assert r.status == "pass"
+
+
+# ---- 平台级内存代兜底规则（数据缺 memory_types 时按插槽推断）----
+
+def test_platform_rule_am5_rejects_ddr4():
+    """AM5 CPU 数据里没写内存代时，平台规则仍应判 DDR4 冲突。"""
+    cpu = {"name": "某 AM5 CPU", "socket": "AM5", "tdp_w": 65}
+    r = by_rule(check_compat(cpu=cpu, memory=MEM_DDR4), "R2")
+    assert r.status == "conflict"
+    assert "DDR5" in r.message and "平台规则" in r.message
+
+
+def test_platform_rule_am4_rejects_ddr5():
+    cpu = {"name": "某 AM4 CPU", "socket": "AM4", "tdp_w": 65}
+    r = by_rule(check_compat(cpu=cpu, memory=MEM_DDR5), "R2")
+    assert r.status == "conflict"
+
+
+def test_platform_rule_am5_motherboard_rejects_ddr4():
+    mb = {"name": "某 B650 主板", "socket": "AM5", "pcie_gen": 4}
+    r = by_rule(check_compat(motherboard=mb, memory=MEM_DDR4), "R2")
+    assert r.status == "conflict"
+
+
+def test_platform_rule_does_not_cover_lga1700():
+    """LGA1700 同一插槽有 DDR4/DDR5 两种主板，不能按平台一刀切。"""
+    cpu = {"name": "某 LGA1700 CPU", "socket": "LGA1700", "tdp_w": 65}
+    for mem in (MEM_DDR4, MEM_DDR5):
+        r = by_rule(check_compat(cpu=cpu, memory=mem), "R2")
+        assert r.status == "skip", mem
+
+
+def test_platform_rule_lga2066_rejects_ddr5():
+    """LGA2066 是 DDR4 平台，数据缺内存代时按平台规则兜底。"""
+    cpu = {"name": "Intel Core i9-7900X", "socket": "LGA2066", "tdp_w": 140}
+    r = by_rule(check_compat(cpu=cpu, memory=MEM_DDR5), "R2")
+    assert r.status == "conflict"
+
+
+def test_data_beats_platform_rule():
+    """规格数据里的 memory_types 优先于平台规则。"""
+    cpu = {"name": "特殊 CPU", "socket": "AM5", "tdp_w": 65, "memory_types": ["DDR4", "DDR5"]}
+    r = by_rule(check_compat(cpu=cpu, memory=MEM_DDR4), "R2")
+    assert r.status == "pass"
+    assert "平台规则" not in r.message

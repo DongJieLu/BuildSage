@@ -16,6 +16,33 @@ from dataclasses import dataclass, field
 
 POWER_HEADROOM_W = 80   # R3：整机余量（主板/硬盘/风扇/超频冗余）
 
+# 平台级内存代兜底：当规格数据里没有 memory_types 时，按插槽推断。
+# 只收录"一个插槽对应唯一内存代"的平台；LGA1700 故意不收录——它同一插槽
+# 同时存在 DDR4 / DDR5 两种主板，必须依赖具体型号数据，不能一刀切。
+SOCKET_MEMORY_TYPES = {
+    "AM4": ["DDR4"],
+    "AM5": ["DDR5"],
+    "LGA1851": ["DDR5"],
+    "LGA1200": ["DDR4"],
+    "LGA1151": ["DDR4"],
+    "LGA2066": ["DDR4"],
+}
+
+
+def supported_memory(entity: dict | None) -> tuple[list[str], bool]:
+    """返回 (支持的内存代列表, 是否由平台规则推断)。
+
+    数据优先：规格行里写了 memory_types 就用它；没写才按插槽查平台规则。
+    """
+    if not entity:
+        return [], False
+    types = [t.upper() for t in (entity.get("memory_types") or [])]
+    if types:
+        return types, False
+    socket = (entity.get("socket") or "").upper().replace(" ", "")
+    mapped = SOCKET_MEMORY_TYPES.get(socket)
+    return ([t.upper() for t in mapped], True) if mapped else ([], False)
+
 
 @dataclass
 class CheckResult:
@@ -78,39 +105,36 @@ def _r2_memory(memory: dict | None, mb: dict | None, cpu: dict | None) -> CheckR
     if not memory:
         return CheckResult("R2", "skip", "缺少内存，无法校验内存代数")
     mem_type = (memory.get("mem_type") or "").upper()
-    cpu_types = [t.upper() for t in (cpu.get("memory_types") or [])] if cpu else []
-    # 没提供主板时，若 CPU 有内存代信息，CPU 侧仍足以判断（如 AM4 只支持 DDR4）
-    if not mb:
-        if not mem_type or not cpu_types:
-            return CheckResult("R2", "skip", "缺少主板，且 CPU 内存代信息缺失，无法校验内存代数")
-        if mem_type not in cpu_types:
-            return CheckResult(
-                "R2", "conflict",
-                f"CPU 不支持 {mem_type}：{cpu.get('name')} 仅支持 {','.join(cpu_types)}",
-                {"mem_type": mem_type, "cpu_types": cpu_types},
-            )
-        return CheckResult(
-            "R2", "pass", f"内存代数与 CPU 匹配：{mem_type}（CPU 支持 {','.join(cpu_types)}；未提供主板，未校验主板侧）",
-            {"mem_type": mem_type, "cpu_types": cpu_types},
-        )
-    mb_types = [t.upper() for t in (mb.get("memory_types") or [])]
-    if not mem_type or not mb_types:
-        return CheckResult("R2", "skip", "内存代数信息缺失", {"mem_type": mem_type, "mb_types": mb_types})
-    if mem_type not in mb_types:
+    if not mem_type:
+        return CheckResult("R2", "skip", "未识别内存代数（需明确 DDR4 / DDR5）")
+    mb_types, mb_inferred = supported_memory(mb)
+    cpu_types, cpu_inferred = supported_memory(cpu)
+
+    if mb and mb_types and mem_type not in mb_types:
+        src = f"（按 {mb.get('socket')} 平台规则推断）" if mb_inferred else ""
         return CheckResult(
             "R2", "conflict",
-            f"主板不支持 {mem_type}：{mb.get('name')} 支持 {','.join(mb_types)}",
-            {"mem_type": mem_type, "mb_types": mb_types},
+            f"主板不支持 {mem_type}：{mb.get('name')}{src} 支持 {','.join(mb_types)}",
+            {"mem_type": mem_type, "mb_types": mb_types, "mb_inferred": mb_inferred},
         )
-    if cpu_types and mem_type not in cpu_types:
+    if cpu and cpu_types and mem_type not in cpu_types:
+        src = f"（按 {cpu.get('socket')} 平台规则推断）" if cpu_inferred else ""
         return CheckResult(
             "R2", "conflict",
-            f"CPU 不支持 {mem_type}：{cpu.get('name')} 支持 {','.join(cpu_types)}",
-            {"mem_type": mem_type, "cpu_types": cpu_types, "mb_types": mb_types},
+            f"CPU 不支持 {mem_type}：{cpu.get('name')}{src} 仅支持 {','.join(cpu_types)}",
+            {"mem_type": mem_type, "cpu_types": cpu_types, "cpu_inferred": cpu_inferred},
         )
+    if not (mb_types or cpu_types):
+        return CheckResult("R2", "skip", "主板 / CPU 内存代信息缺失，无法校验")
+    parts = []
+    if mb_types:
+        parts.append(f"主板{'（平台规则）' if mb_inferred else ''}支持 {','.join(mb_types)}")
+    if cpu_types:
+        parts.append(f"CPU{'（平台规则）' if cpu_inferred else ''}支持 {','.join(cpu_types)}")
     return CheckResult(
-        "R2", "pass", f"内存代数匹配：{mem_type}（主板支持 {','.join(mb_types)}）",
-        {"mem_type": mem_type, "mb_types": mb_types, "cpu_types": cpu_types},
+        "R2", "pass", f"内存代数匹配：{mem_type}（{'；'.join(parts)}）",
+        {"mem_type": mem_type, "mb_types": mb_types, "cpu_types": cpu_types,
+         "mb_inferred": mb_inferred, "cpu_inferred": cpu_inferred},
     )
 
 
