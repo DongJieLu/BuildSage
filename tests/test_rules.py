@@ -108,3 +108,23 @@ def test_verdict_priority():
     assert verdict(warn_case) == "warn"         # 仅 R5 提示
     ok_case = check_compat(cpu=CPU_LGA1700, motherboard=MB_LGA1700_DDR5, memory=MEM_DDR5, gpu=GPU_4090, psu=PSU_850, case_limit_mm=355)
     assert verdict(ok_case) == "pass"
+
+
+def test_verdict_unknown_when_all_skip():
+    """全部规则跳过（信息不足）不能默认判成"兼容"。"""
+    assert verdict(check_compat()) == "unknown"
+    assert verdict(check_compat(cpu={"name": "某 CPU"})) == "unknown"
+
+
+def test_r2_cpu_only_catches_wrong_memory_gen():
+    """只给 CPU + 内存、没给主板时，CPU 侧内存代仍应能判否（5500X3D 是 AM4/DDR4）。"""
+    cpu_5500x3d = {"name": "AMD Ryzen 5 5500X3D", "socket": "AM4", "tdp_w": 105, "memory_types": ["DDR4"]}
+    r = by_rule(check_compat(cpu=cpu_5500x3d, memory=MEM_DDR5), "R2")
+    assert r.status == "conflict"
+    assert "DDR4" in r.message
+
+
+def test_r2_cpu_only_pass_when_matching():
+    cpu_5500x3d = {"name": "AMD Ryzen 5 5500X3D", "socket": "AM4", "tdp_w": 105, "memory_types": ["DDR4"]}
+    r = by_rule(check_compat(cpu=cpu_5500x3d, memory=MEM_DDR4), "R2")
+    assert r.status == "pass"

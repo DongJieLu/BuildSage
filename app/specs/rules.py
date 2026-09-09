@@ -48,12 +48,16 @@ def check_compat(
 
 
 def verdict(results: list[CheckResult]) -> str:
-    """总体结论：有 conflict 即不通过；否则有 warn 即可用有提示；否则通过。"""
-    if any(r.status == "conflict" for r in results):
+    """总体结论：有 conflict 即不通过；有 warn 即可用有提示；有 pass 即通过；
+    全部 skip（信息不足）时返回 unknown —— 不能默认成"兼容"。"""
+    statuses = {r.status for r in results}
+    if "conflict" in statuses:
         return "conflict"
-    if any(r.status == "warn" for r in results):
+    if "warn" in statuses:
         return "warn"
-    return "pass"
+    if "pass" in statuses:
+        return "pass"
+    return "unknown"
 
 
 def _r1_socket(cpu: dict | None, mb: dict | None) -> CheckResult:
@@ -71,9 +75,24 @@ def _r1_socket(cpu: dict | None, mb: dict | None) -> CheckResult:
 
 
 def _r2_memory(memory: dict | None, mb: dict | None, cpu: dict | None) -> CheckResult:
-    if not memory or not mb:
-        return CheckResult("R2", "skip", "缺少内存或主板，无法校验内存代数")
+    if not memory:
+        return CheckResult("R2", "skip", "缺少内存，无法校验内存代数")
     mem_type = (memory.get("mem_type") or "").upper()
+    cpu_types = [t.upper() for t in (cpu.get("memory_types") or [])] if cpu else []
+    # 没提供主板时，若 CPU 有内存代信息，CPU 侧仍足以判断（如 AM4 只支持 DDR4）
+    if not mb:
+        if not mem_type or not cpu_types:
+            return CheckResult("R2", "skip", "缺少主板，且 CPU 内存代信息缺失，无法校验内存代数")
+        if mem_type not in cpu_types:
+            return CheckResult(
+                "R2", "conflict",
+                f"CPU 不支持 {mem_type}：{cpu.get('name')} 仅支持 {','.join(cpu_types)}",
+                {"mem_type": mem_type, "cpu_types": cpu_types},
+            )
+        return CheckResult(
+            "R2", "pass", f"内存代数与 CPU 匹配：{mem_type}（CPU 支持 {','.join(cpu_types)}；未提供主板，未校验主板侧）",
+            {"mem_type": mem_type, "cpu_types": cpu_types},
+        )
     mb_types = [t.upper() for t in (mb.get("memory_types") or [])]
     if not mem_type or not mb_types:
         return CheckResult("R2", "skip", "内存代数信息缺失", {"mem_type": mem_type, "mb_types": mb_types})
@@ -83,7 +102,6 @@ def _r2_memory(memory: dict | None, mb: dict | None, cpu: dict | None) -> CheckR
             f"主板不支持 {mem_type}：{mb.get('name')} 支持 {','.join(mb_types)}",
             {"mem_type": mem_type, "mb_types": mb_types},
         )
-    cpu_types = [t.upper() for t in (cpu.get("memory_types") or [])] if cpu else []
     if cpu_types and mem_type not in cpu_types:
         return CheckResult(
             "R2", "conflict",

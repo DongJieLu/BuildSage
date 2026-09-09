@@ -103,6 +103,7 @@ def build_graph(
         events = [{"type": "progress", "stage": "config_extraction",
                    "detail": " ".join(filter(None, [cfg.cpu, cfg.gpu, cfg.motherboard, cfg.memory, cfg.psu]))}]
         specs: dict[str, dict | None] = {}
+        unresolved: list[str] = []
 
         def _norm_row(row: dict | None) -> dict | None:
             """DB 行的逗号分隔 memory_types 字符串 → 列表，避免被逐字符迭代。"""
@@ -121,7 +122,10 @@ def build_graph(
             elif cat == "psu" and name.rstrip("Ww").isdigit():
                 specs[cat] = {"name": name, "rated_w": int(name.rstrip("Ww"))}
             else:
-                specs[cat] = _norm_row(spec_repo.best_match(cat, name))
+                row = _norm_row(spec_repo.best_match(cat, name))
+                specs[cat] = row
+                if row is None:
+                    unresolved.append(name)
         if not any(specs.values()):
             return _result(state, answer="未能识别配置清单中的硬件型号，请补充具体型号。",
                            intent="compat", strategy="config-miss", events=events, rejected=True)
@@ -130,6 +134,8 @@ def build_graph(
             gpu=specs.get("gpu"), psu=specs.get("psu"), case_limit_mm=cfg.case_limit_mm,
         )
         lines = []
+        if unresolved:
+            lines.append(f"⚠️ 规格库未收录：{'、'.join(unresolved)}（相关规则已跳过，结论可能不完整）")
         for r in results:
             icon = {"pass": "✅", "conflict": "❌", "warn": "💡", "skip": "➖"}[r.status]
             lines.append(f"{icon} {r.rule_id} {r.message}")
@@ -138,6 +144,7 @@ def build_graph(
             "pass": "**结论：配置兼容，可以放心装机。**",
             "warn": "**结论：可用，但存在提示项（见 💡 标注）。**",
             "conflict": "**结论：存在冲突，请按 ❌ 项调整配置。**",
+            "unknown": "**结论：信息不足，无法判断——请补充 CPU、主板、内存、电源的具体型号。**",
         }[v])
         answer = "\n".join(lines)
         return _result(state, answer=answer, intent="compat", strategy="rules-engine", events=events,

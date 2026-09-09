@@ -136,6 +136,9 @@ async function check() {
     if (conclusion.includes('存在冲突')) {
       verdictClass.value = 'conflict'
       verdictText.value = '存在冲突'
+    } else if (conclusion.includes('信息不足')) {
+      verdictClass.value = 'unknown'
+      verdictText.value = '信息不足'
     } else if (conclusion.includes('提示')) {
       verdictClass.value = 'compat'
       verdictText.value = '可用有提示'
@@ -244,6 +247,10 @@ onMounted(loadOptions)
 .route-badge.conflict {
   background: #fdecec;
   color: #b91c1c;
+}
+.route-badge.unknown {
+  background: #f0f0f2;
+  color: #6e6e73;
 }
 .latency {
   font-size: 12px;
