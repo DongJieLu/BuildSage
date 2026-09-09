@@ -202,7 +202,7 @@ async def ingest(file: UploadFile = File(...), category: str = Form(...), svc=De
 def sources(category: str | None = None, repo=Depends(get_knowledge_repository)):
     try:
         docs = repo.list_documents(category or None)
-        return ok({"documents": docs, "count": len(docs)})
+        return ok({"documents": _jsonable(docs), "count": len(docs)})
     except Exception as exc:  # noqa: BLE001
         logger.exception("sources 接口异常")
         return fail(3001, f"服务内部错误: {exc}", 500)
