@@ -21,7 +21,7 @@ from app.ingest.pipeline import get_vectorstore
 
 logger = logging.getLogger(__name__)
 
-TOP_K_RECALL = 20  # 召回 20 条交重排（CPU 环境 CrossEncoder 成本高，20→5 是精度/延迟折中）
+TOP_K_RECALL = 12  # 召回 12 条交重排（CPU 环境 CrossEncoder 是首字延迟瓶颈，12→5 精度损失小、延迟减半）
 
 
 def _all_chunks(category: str | None = None) -> list[Document]:

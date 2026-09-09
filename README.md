@@ -66,31 +66,48 @@ docker compose up -d
 cp .env.example .env   # 填入 DEEPSEEK_API_KEY，缺省自动降级 Mock
 
 # 3. 建表 + 规格库导入（CPU/GPU 从公开规格页抽取，主板/内存/电源为整理数据）
-python scripts/extract_specs.py
+python scripts/init_db.py
+python scripts/extract_specs.py     # 从 data/docs/*.html 抽取（可选，产物已随仓库提供）
 python scripts/load_specs.py
 
-# 4. 攻略语料入库
-python scripts/ingest_guides.py
+# 4. 攻略语料入库（首次会下载 BGE-M3 权重）
+python scripts/ingest_guides.py --rebuild
 
 # 5. 启动服务
 uvicorn app.api.main:app --host 127.0.0.1 --port 8000
 cd frontend && npm install && npm run dev
 ```
 
+打开 http://127.0.0.1:5173（Vue 界面）或 http://127.0.0.1:8000/docs（Swagger）。
+
+## 测试与评估
+
+```bash
+# 单元测试（31 项：规则引擎 / 路由 / 生成器 / LangGraph 管道）
+python -m pytest tests/ -q
+
+# 金标集自动生成 + 评估（产出 EVALUATION.md）
+python scripts/gen_eval_set.py --seed 42
+python scripts/evaluate.py --eval-set data/eval/eval_set.jsonl --output EVALUATION.md
+```
+
+评估结果见 `EVALUATION.md`（含复现命令与运行日期）。
+
 ## 里程碑
 
-| 阶段 | 内容 |
-|---|---|
-| P0 | 项目初始化（EduRAG 骨架迁移 + 教育域清理 + LangChain 栈依赖） |
-| P1 | 规格库：公开规格页抽取 + 兼容规则引擎 R1~R5 + 建表入库 |
-| P2 | LangChain 入库链路 + 自写选购攻略语料 |
-| P3 | 混合检索 + 重排 + LCEL 生成 + SSE |
-| P4 | 四通道路由 + 参数直查 + 兼容校验（LangGraph 管道） |
-| P5 | 评估（RAGAS + 参数准确率 / 兼容 F1）+ Langfuse 可观测 |
-| P6 | 前端换皮 + 交付文档（README / INTERVIEW / EVALUATION / SOURCES） |
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| P0 | 项目初始化（EduRAG 骨架迁移 + 教育域清理 + LangChain 栈依赖） | ✅ |
+| P1 | 规格库：公开规格页抽取 500 SKU + 兼容规则引擎 R1~R5 + 建表入库 | ✅ |
+| P2 | LangChain 入库链路 + 14 篇自写选购攻略（95 chunks） | ✅ |
+| P3 | 混合检索（Ensemble+RRF）+ 重排 + LCEL 生成 + SSE | ✅ |
+| P4 | 四通道 LangGraph 管道 + 参数直查 + 兼容校验 | ✅ |
+| P5 | 金标自动生成 + 四通道指标评估 + RAGAS + Langfuse | ✅ |
+| P6 | 前端（对话/配置器/规格库/看板）+ 交付文档 | ✅ |
 
 ## 语料与数据来源
 
 - **结构化规格**：CPU/GPU 抽取自 Wikipedia 公开规格列表（CC BY-SA，`scripts/extract_specs.py`）与 PassMark 性能榜（仅本地参考，原始页面不入仓库）；主板/内存/电源为人工整理（来源为厂商公开规格页，见 `data/SOURCES.md`）
-- **非结构化攻略**：自写通用选购指南（`data/docs/`），不包含第三方受版权保护内容
+- **非结构化攻略**：14 篇自写选购指南（`data/docs/`），不包含第三方受版权保护内容
 - 原始抓取页面（`data/docs/*.html`）不提交至仓库，仓库仅保留抽取产物 JSON
+

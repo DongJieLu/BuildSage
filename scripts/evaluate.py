@@ -165,7 +165,11 @@ def run_ragas(rag_samples: list[tuple], limit: int = 12) -> dict | None:
             metrics=[Faithfulness(), AnswerRelevancy(), ContextUtilization()],
             llm=judge, embeddings=emb,
         )
-        return {k: round(float(v), 4) for k, v in result.items()}
+        # ragas 0.4 的 EvaluationResult 不是 dict：用 to_pandas() 取各指标均值
+        df = result.to_pandas()
+        metric_cols = [c for c in df.columns if c not in
+                       ("user_input", "response", "retrieved_contexts", "reference")]
+        return {c: round(float(df[c].mean()), 4) for c in metric_cols if df[c].notna().any()}
     except Exception as exc:  # noqa: BLE001
         print(f"RAGAS 评估失败（标注待实测）: {exc}")
         return None

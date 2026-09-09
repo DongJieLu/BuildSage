@@ -75,6 +75,11 @@ export function deleteSource(docId) {
   return unwrap(http.delete(`/sources/${docId}`))
 }
 
+// 规格库查询（category: cpu|gpu|motherboard|memory|psu）
+export function listSpecs(category, q, limit = 100) {
+  return unwrap(http.get('/specs', { params: { category, q: q || undefined, limit } }))
+}
+
 // 统计
 export function getStats(days) {
   return unwrap(http.get('/stats', { params: { days } }))

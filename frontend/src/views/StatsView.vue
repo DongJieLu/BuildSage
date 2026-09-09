@@ -23,11 +23,10 @@
     </el-row>
 
     <el-card shadow="never" class="card">
-      <template #header>Top FAQ</template>
-      <el-table :data="faqTop" border stripe>
-        <el-table-column prop="question" label="问题" min-width="240" />
-        <el-table-column prop="hits" label="命中次数" width="120" />
-        <el-table-column prop="category" label="方向" width="120" />
+      <template #header>热点问题 Top10（近 30 天）</template>
+      <el-table :data="hotQuestions" border stripe>
+        <el-table-column prop="question" label="问题" min-width="300" />
+        <el-table-column prop="count" label="提问次数" width="120" />
       </el-table>
     </el-card>
   </div>
@@ -41,7 +40,7 @@ import { getStats } from '../api'
 
 const days = ref(7)
 const summary = ref('')
-const faqTop = ref([])
+const hotQuestions = ref([])
 const intentRef = ref(null)
 const strategyRef = ref(null)
 const dailyRef = ref(null)
@@ -122,8 +121,9 @@ function disposeCharts() {
 async function loadStats() {
   try {
     const data = await getStats(days.value)
-    summary.value = `近 ${days.value} 天共 ${data.total} 条问答 · 平均延迟 ${data.avg_latency_ms} ms`
-    faqTop.value = data.faq_top || []
+    const specTotal = Object.values(data.spec_scale || {}).reduce((a, b) => a + b, 0)
+    summary.value = `近 ${days.value} 天共 ${data.total} 条问答 · 平均延迟 ${data.avg_latency_ms} ms · 规格库 ${specTotal} 个型号`
+    hotQuestions.value = data.hot_questions || []
     await nextTick()
     disposeCharts()
     charts = [
