@@ -30,7 +30,7 @@
       <div class="picker-card">
         <div class="picker-label">
           <span class="cat-name">机箱显卡限长</span>
-          <span class="cat-count">可选</span>
+          <span class="cat-count">选了机箱可忽略</span>
         </div>
         <el-input v-model="caseLimit" placeholder="例如 355（毫米）" />
       </div>
@@ -65,10 +65,12 @@ const categories = [
   { key: 'motherboard', label: '主板' },
   { key: 'memory', label: '内存' },
   { key: 'psu', label: '电源' },
+  { key: 'cooler', label: '散热器' },
+  { key: 'case', label: '机箱' },
 ]
 
-const options = ref({ cpu: [], gpu: [], motherboard: [], memory: [], psu: [] })
-const selected = ref({ cpu: '', gpu: '', motherboard: '', memory: '', psu: '' })
+const options = ref({ cpu: [], gpu: [], motherboard: [], memory: [], psu: [], cooler: [], case: [] })
+const selected = ref({ cpu: '', gpu: '', motherboard: '', memory: '', psu: '', cooler: '', case: '' })
 const caseLimit = ref('')
 const checking = ref(false)
 const result = ref(null)
@@ -84,6 +86,8 @@ function metaOf(key, o) {
   if (key === 'motherboard') return `${o.socket || '-'} · ${o.memory_types || '-'} · ${o.form_factor || '-'}`
   if (key === 'memory') return `${o.mem_type || '-'} · ${o.capacity_gb || '-'}GB · ${o.speed_mhz || '-'}MHz`
   if (key === 'psu') return `${o.rated_w || '-'}W · ${o.certification || '-'}`
+  if (key === 'cooler') return `${o.type || '-'} · 解热 ${o.cooling_capacity_w || '-'}W`
+  if (key === 'case') return `显卡限长 ${o.gpu_limit_mm || '-'}mm`
   return ''
 }
 
@@ -105,12 +109,14 @@ function buildQuestion() {
   if (selected.value.motherboard) parts.push(`主板 ${selected.value.motherboard}`)
   if (selected.value.memory) parts.push(`内存 ${selected.value.memory}`)
   if (selected.value.psu) parts.push(`电源 ${selected.value.psu}`)
+  if (selected.value.cooler) parts.push(`散热器 ${selected.value.cooler}`)
+  if (selected.value.case) parts.push(`机箱 ${selected.value.case}`)
   if (caseLimit.value) parts.push(`机箱显卡限长 ${caseLimit.value} 毫米`)
   return `帮我检查这套配置是否兼容：${parts.join('，')}`
 }
 
 async function check() {
-  if (!selected.value.cpu && !selected.value.gpu && !selected.value.motherboard && !selected.value.psu) {
+  if (!Object.values(selected.value).some(Boolean)) {
     return
   }
   checking.value = true

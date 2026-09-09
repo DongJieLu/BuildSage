@@ -112,7 +112,7 @@ def build_graph(
             return row
 
         for cat, name in (("cpu", cfg.cpu), ("gpu", cfg.gpu), ("motherboard", cfg.motherboard),
-                          ("memory", cfg.memory), ("psu", cfg.psu)):
+                          ("memory", cfg.memory), ("psu", cfg.psu), ("cooler", cfg.cooler), ("case", cfg.case)):
             if not name:
                 specs[cat] = None
                 continue
@@ -131,7 +131,8 @@ def build_graph(
                            intent="compat", strategy="config-miss", events=events, rejected=True)
         results = check_compat(
             cpu=specs.get("cpu"), motherboard=specs.get("motherboard"), memory=specs.get("memory"),
-            gpu=specs.get("gpu"), psu=specs.get("psu"), case_limit_mm=cfg.case_limit_mm,
+            gpu=specs.get("gpu"), psu=specs.get("psu"), case=specs.get("case"),
+            cooler=specs.get("cooler"), case_limit_mm=cfg.case_limit_mm,
         )
         lines = []
         if unresolved:
@@ -193,7 +194,8 @@ def build_graph(
         return "motherboard"
 
     def _spec_id(category: str, row: dict) -> str:
-        id_col = {"cpu": "cpu_id", "gpu": "gpu_id", "motherboard": "mb_id", "memory": "mem_id", "psu": "psu_id"}
+        id_col = {"cpu": "cpu_id", "gpu": "gpu_id", "motherboard": "mb_id", "memory": "mem_id",
+                  "psu": "psu_id", "cooler": "cooler_id", "case": "case_id"}
         return f"{category}:{row.get(id_col.get(category, 'cpu_id'), '')}"
 
     # --- 组图 ---

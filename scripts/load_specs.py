@@ -67,6 +67,58 @@ def norm_gpu(row: dict) -> dict:
     }
 
 
+def _norm_gpu_key(name: str) -> str:
+    """把 gpu 表的型号名归一化，用于和 gpu_meta.json 对齐：
+    去括注（Navi xx）、去末尾显存标注（GDDR6 / 16 GB），压空格。"""
+    key = re.sub(r"（.*?）|\(.*?\)", " ", name)
+    key = re.sub(r"\bGDDR\w+\b|\b\d+\s*GB\b", " ", key, flags=re.I)
+    return re.sub(r"\s+", " ", key).strip().lower()
+
+
+def merge_gpu_meta(gpus: list[dict]) -> int:
+    """把 gpu_meta.json 的公版长度 / 官方推荐电源合并进 gpu 行（数据缺才填）。"""
+    meta_path = SPECS / "gpu_meta.json"
+    if not meta_path.exists():
+        return 0
+    meta = {m["search_name"].strip().lower(): m for m in json.loads(meta_path.read_text(encoding="utf-8"))}
+    merged = 0
+    for g in gpus:
+        key = _norm_gpu_key(g["name"])
+        m = meta.get(key)
+        if not m:
+            continue
+        if g.get("length_mm") is None and m.get("length_mm") is not None:
+            g["length_mm"] = m["length_mm"]
+            merged += 1
+        if g.get("recommended_psu_w") is None and m.get("recommended_psu_w") is not None:
+            g["recommended_psu_w"] = m["recommended_psu_w"]
+    return merged
+
+
+def norm_case(row: dict) -> dict:
+    return {
+        "name": row["name"], "brand": row["brand"],
+        "gpu_limit_mm": to_int(row.get("gpu_limit_mm")),
+        "cooler_height_mm": to_int(row.get("cooler_height_mm")),
+        "mb_support": row.get("mb_support"),
+        "radiator_mm": to_int(row.get("radiator_mm")),
+        "price_cny": to_float(row.get("price_cny")),
+        "source": row.get("source", "manual"),
+    }
+
+
+def norm_cooler(row: dict) -> dict:
+    return {
+        "name": row["name"], "brand": row["brand"], "type": row.get("type"),
+        "cooling_capacity_w": to_int(row.get("cooling_capacity_w")),
+        "sockets": row.get("sockets"),
+        "height_mm": to_int(row.get("height_mm")),
+        "radiator_mm": to_int(row.get("radiator_mm")),
+        "price_cny": to_float(row.get("price_cny")),
+        "source": row.get("source", "manual"),
+    }
+
+
 def norm_mb(row: dict) -> dict:
     return {
         "name": row["name"], "brand": row["brand"], "chipset": row.get("chipset"),
@@ -111,6 +163,14 @@ INSERTS = {
                "VALUES (:name, :brand, :mem_type, :capacity_gb, :speed_mhz, :modules, :source)", norm_memory),
     "psu": ("INSERT INTO psu (name, brand, rated_w, certification, modularity, atx3, source) "
             "VALUES (:name, :brand, :rated_w, :certification, :modularity, :atx3, :source)", norm_psu),
+    "pc_case": ("INSERT INTO pc_case (name, brand, gpu_limit_mm, cooler_height_mm, mb_support, radiator_mm, "
+                "price_cny, source) "
+                "VALUES (:name, :brand, :gpu_limit_mm, :cooler_height_mm, :mb_support, :radiator_mm, "
+                ":price_cny, :source)", norm_case),
+    "cooler": ("INSERT INTO cooler (name, brand, type, cooling_capacity_w, sockets, height_mm, radiator_mm, "
+               "price_cny, source) "
+               "VALUES (:name, :brand, :type, :cooling_capacity_w, :sockets, :height_mm, :radiator_mm, "
+               ":price_cny, :source)", norm_cooler),
 }
 
 
@@ -132,17 +192,22 @@ def main() -> None:
     mbs = dedupe(load("motherboard.json"))
     mems = dedupe(load("memory.json"))
     psus = dedupe(load("psu.json"))
-    data = {"cpu": cpus, "gpu": gpus, "motherboard": mbs, "memory": mems, "psu": psus}
+    cases = dedupe(load("case.json"))
+    coolers = dedupe(load("cooler.json"))
+    n_merged = merge_gpu_meta(gpus)
+    data = {"cpu": cpus, "gpu": gpus, "motherboard": mbs, "memory": mems, "psu": psus,
+            "pc_case": cases, "cooler": coolers}
 
     engine = get_engine()
     with engine.begin() as conn:
-        for table in ("memory", "psu", "motherboard", "gpu", "cpu"):  # 先子后父无所谓，仅顺序美观
+        for table in ("memory", "psu", "motherboard", "pc_case", "cooler", "gpu", "cpu"):
             conn.execute(text(f"DELETE FROM {table}"))
         for table, rows in data.items():
             sql, norm = INSERTS[table]
             conn.execute(text(sql), [norm(r) for r in rows])
     for table, rows in data.items():
         print(f"{table:12s}: {len(rows)} 条已导入")
+    print(f"gpu 长度/推荐电源合并: {n_merged} 条")
 
 
 if __name__ == "__main__":

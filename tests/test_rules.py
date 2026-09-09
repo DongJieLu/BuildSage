@@ -173,3 +173,72 @@ def test_data_beats_platform_rule():
     r = by_rule(check_compat(cpu=cpu, memory=MEM_DDR4), "R2")
     assert r.status == "pass"
     assert "平台规则" not in r.message
+
+
+# ---- R6~R9：散热器与机箱 ----
+
+CPU_14900K = {"name": "Intel Core i9-14900K", "socket": "LGA1700", "tdp_w": 125, "tdp_max_w": 253, "memory_types": ["DDR4", "DDR5"]}
+MB_ATX = {"name": "MSI MAG Z790 TOMAHAWK MAX WIFI", "socket": "LGA1700", "memory_types": ["DDR5"], "form_factor": "ATX", "pcie_gen": 5}
+CASE_SMALL = {"name": "乔思伯 TK-1", "gpu_limit_mm": 280, "cooler_height_mm": 165, "mb_support": "M-ATX/ITX", "radiator_mm": 240}
+CASE_BIG = {"name": "追风者 NV7", "gpu_limit_mm": 450, "cooler_height_mm": 185, "mb_support": "ATX/M-ATX/ITX", "radiator_mm": 360}
+COOLER_AK400 = {"name": "九州风神 AK400", "type": "风冷", "cooling_capacity_w": 220, "sockets": "AM4/AM5/LGA1700/LGA1200/LGA115X", "height_mm": 155}
+COOLER_AIO240 = {"name": "240 水冷", "type": "一体式水冷", "cooling_capacity_w": 260, "sockets": "AM4/AM5/LGA1700", "radiator_mm": 240}
+COOLER_AIO360 = {"name": "360 水冷", "type": "一体式水冷", "cooling_capacity_w": 330, "sockets": "AM4/AM5/LGA1700", "radiator_mm": 360}
+GPU_4090_LEN = {"name": "GeForce RTX 4090", "tdp_w": 450, "pcie_gen": 4, "length_mm": 304}
+
+
+def test_r6_pass_and_conflict():
+    ok = by_rule(check_compat(cpu=CPU_14900K, cooler=COOLER_AIO360), "R6")
+    assert ok.status == "pass"           # 330W ≥ 253W
+    bad = by_rule(check_compat(cpu=CPU_14900K, cooler=COOLER_AK400), "R6")
+    assert bad.status == "conflict"      # 220W < 253W
+    assert "降频" in bad.message
+
+
+def test_r6_uses_tdp_max():
+    r = by_rule(check_compat(cpu=CPU_14900K, cooler=COOLER_AK400), "R6")
+    assert r.evidence["cpu_w"] == 253    # 用最大睿频功耗而不是 125W
+
+
+def test_r6_skip_when_capacity_unknown():
+    cooler = {"name": "某散热器", "type": "风冷", "cooling_capacity_w": None}
+    r = by_rule(check_compat(cpu=CPU_14900K, cooler=cooler), "R6")
+    assert r.status == "skip"
+    assert "未收录" in r.message
+
+
+def test_r7_socket_match_and_conflict():
+    ok = by_rule(check_compat(cpu=CPU_14900K, cooler=COOLER_AK400), "R7")
+    assert ok.status == "pass"           # AK400 支持 LGA1700
+    bad_cooler = {"name": "旧散热器", "type": "风冷", "cooling_capacity_w": 220, "sockets": "AM4/LGA115X"}
+    r = by_rule(check_compat(cpu=CPU_14900K, cooler=bad_cooler), "R7")
+    assert r.status == "conflict"
+
+
+def test_r7_wildcard_lga17xx():
+    cooler = {"name": "新扣具散热器", "type": "风冷", "cooling_capacity_w": 220, "sockets": "AM4/AM5/LGA17XX"}
+    r = by_rule(check_compat(cpu=CPU_14900K, cooler=cooler), "R7")
+    assert r.status == "pass"            # LGA17XX 通配 LGA1700
+
+
+def test_r8_radiator_fit():
+    ok = by_rule(check_compat(cooler=COOLER_AIO360, case=CASE_BIG), "R8")
+    assert ok.status == "pass"           # 360 ≤ 360
+    bad = by_rule(check_compat(cooler=COOLER_AIO360, case=CASE_SMALL), "R8")
+    assert bad.status == "conflict"      # 360 > 240
+    air = by_rule(check_compat(cooler=COOLER_AK400, case=CASE_SMALL), "R8")
+    assert air.status == "skip"          # 风冷无冷排
+
+
+def test_r9_form_factor():
+    ok = by_rule(check_compat(motherboard=MB_ATX, case=CASE_BIG), "R9")
+    assert ok.status == "pass"
+    bad = by_rule(check_compat(motherboard=MB_ATX, case=CASE_SMALL), "R9")
+    assert bad.status == "conflict"      # ATX 主板进 M-ATX 机箱
+
+
+def test_r4_uses_case_row_over_manual_limit():
+    """机箱数据的限长优先于手填值。"""
+    r = by_rule(check_compat(gpu=GPU_4090_LEN, case=CASE_SMALL, case_limit_mm=999), "R4")
+    assert r.status == "conflict"        # 304 > 280（机箱数据优先于手填 999）
+    assert "280" in r.message

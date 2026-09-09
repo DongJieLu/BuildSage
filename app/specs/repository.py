@@ -16,19 +16,27 @@ TABLES = {
     "motherboard": "motherboard",
     "memory": "memory",
     "psu": "psu",
+    "cooler": "cooler",
+    "case": "pc_case",
 }
 
 _ID_COLS = {
     "cpu": "cpu_id", "gpu": "gpu_id", "motherboard": "mb_id",
-    "memory": "mem_id", "psu": "psu_id",
+    "memory": "mem_id", "psu": "psu_id", "cooler": "cooler_id", "case": "case_id",
 }
 
 # 参与匹配时剔除的噪声词（品牌词与容量词，避免 "850W" 匹配到 Corsair RM850e 之外）
-_NOISE_RE = re.compile(r"(geforce|radeon|ryzen|intel|amd|core|nvidia|gb|w\b|显卡|处理器|主板|内存|电源)", re.I)
+_NOISE_RE = re.compile(r"(geforce|radeon|ryzen|intel|amd|core|nvidia|gb|w\b|显卡|处理器|主板|内存|电源|散热器|机箱|水冷|风冷)", re.I)
 
 
 def normalize_query(q: str) -> str:
-    return re.sub(r"\s+", " ", _NOISE_RE.sub(" ", (q or "").strip())).strip().lower()
+    """去噪声词后压掉所有空白：中文用户写「利民PA120」通常不带空格，
+    而 DB 里是「利民 PA120 SE」，比较必须两边都去空格。"""
+    return re.sub(r"\s+", "", _NOISE_RE.sub(" ", (q or "").strip())).lower()
+
+
+def _squash(name: str) -> str:
+    return re.sub(r"\s+", "", (name or "").lower())
 
 
 class SpecRepository:
@@ -43,9 +51,10 @@ class SpecRepository:
         q = normalize_query(query)
         if not q:
             q = query.strip().lower()
-        sql = f"SELECT * FROM {table} WHERE LOWER(name) LIKE :pat ORDER BY release_year DESC LIMIT :limit" \
+        sql = (f"SELECT * FROM {table} WHERE LOWER(REPLACE(name, ' ', '')) LIKE :pat "
+               f"ORDER BY release_year DESC LIMIT :limit") \
             if category in ("cpu", "gpu", "motherboard") else \
-            f"SELECT * FROM {table} WHERE LOWER(name) LIKE :pat LIMIT :limit"
+            f"SELECT * FROM {table} WHERE LOWER(REPLACE(name, ' ', '')) LIKE :pat LIMIT :limit"
         with self._engine.connect() as conn:
             rows = conn.execute(text(sql), {"pat": f"%{q}%", "limit": limit}).mappings().all()
             return [dict(r) for r in rows]
@@ -69,8 +78,9 @@ class SpecRepository:
         if not cands:
             return None
         q = normalize_query(query)
-        def score(row: dict) -> int:
-            name = row["name"].lower()
+
+        def score(row: dict) -> tuple[int, int]:
+            name = _squash(row["name"])
             s = 0
             if name == q:
                 s += 100
@@ -79,7 +89,9 @@ class SpecRepository:
             if q in name:
                 s += 20
             s += 10 if row.get("source") == "manual" else 0
-            return s
+            # 同分时偏好名字更短的（基础型号优于衍生变体，如 RTX 4090 优于 4090 D）
+            return s, -len(name)
+
         return max(cands, key=score)
 
     def count(self, category: str | None = None) -> dict:

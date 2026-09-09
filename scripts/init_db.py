@@ -63,6 +63,31 @@ DDL_STATEMENTS = [
       source       VARCHAR(30) DEFAULT 'manual',
       KEY idx_socket (socket)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    # 注意：case 是 MySQL 保留字，表名用 pc_case
+    """CREATE TABLE IF NOT EXISTS pc_case (
+      case_id        BIGINT PRIMARY KEY AUTO_INCREMENT,
+      name           VARCHAR(150) NOT NULL UNIQUE,
+      brand          VARCHAR(50) NOT NULL,
+      gpu_limit_mm   INT,
+      cooler_height_mm INT,
+      mb_support     VARCHAR(100),
+      radiator_mm    INT,
+      release_year   INT,
+      price_cny      DECIMAL(10,2),
+      source         VARCHAR(30) DEFAULT 'manual'
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+    """CREATE TABLE IF NOT EXISTS cooler (
+      cooler_id       BIGINT PRIMARY KEY AUTO_INCREMENT,
+      name            VARCHAR(150) NOT NULL UNIQUE,
+      brand           VARCHAR(50) NOT NULL,
+      type            VARCHAR(20),
+      cooling_capacity_w INT,
+      sockets         VARCHAR(200),
+      height_mm       INT,
+      radiator_mm     INT,
+      price_cny       DECIMAL(10,2),
+      source          VARCHAR(30) DEFAULT 'manual'
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     """CREATE TABLE IF NOT EXISTS memory (
       mem_id      BIGINT PRIMARY KEY AUTO_INCREMENT,
       name        VARCHAR(150) NOT NULL UNIQUE,

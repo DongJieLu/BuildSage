@@ -127,6 +127,8 @@ class _Config:
     motherboard = "Z790"
     memory = "DDR5"
     psu = "650W"
+    cooler = ""
+    case = ""
     case_limit_mm = None
 
 

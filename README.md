@@ -25,7 +25,7 @@
 
 ![规格库](docs/screenshots/03_specs.png)
 
-规格库共 511 个型号，可搜索、按类别浏览，来源标注了是"公开规格页抽取"还是"人工整理"。
+规格库共 565 个型号（CPU 265 / GPU 165 / 主板 32 / 内存 24 / 电源 28 / 散热器 25 / 机箱 29），可搜索、按类别浏览，来源标注了是"公开规格页抽取"还是"人工整理"。
 
 ![统计看板](docs/screenshots/04_stats.png)
 
@@ -54,10 +54,14 @@
 | 规则 | 内容 |
 |---|---|
 | R1 | CPU 插槽 ↔ 主板插槽 |
-| R2 | 内存代数 ↔ 主板/CPU 支持 |
+| R2 | 内存代数 ↔ 主板/CPU 支持（数据缺失时按 AM4/AM5 等插槽平台规则兜底） |
 | R3 | CPU 最大功耗 + GPU TDP + 80W 余量 ≤ 电源额定 |
-| R4 | 显卡长度 ↔ 机箱限长 |
+| R4 | 显卡长度 ↔ 机箱显卡限长（机箱库自动取，手填兜底） |
 | R5 | PCIe 世代向下兼容提示 |
+| R6 | 散热器解热能力 ≥ CPU 最大睿频功耗 |
+| R7 | 散热器支持插槽 ↔ CPU 插槽（兼容 LGA17XX 等通配写法） |
+| R8 | 水冷冷排尺寸 ↔ 机箱最大冷排位 |
+| R9 | 主板板型 ≤ 机箱支持板型 |
 
 ## 技术栈
 
@@ -69,7 +73,7 @@
 | 重排 | BAAI/bge-reranker-large（CrossEncoderReranker） |
 | 向量库 | Chroma（langchain-chroma） |
 | 混合检索 | BM25Retriever + 向量 → EnsembleRetriever（RRF） |
-| 规格库 | MySQL 8（cpu / gpu / motherboard / memory / psu 五表） |
+| 规格库 | MySQL 8（cpu / gpu / motherboard / memory / psu / cooler / pc_case 七表） |
 | 缓存 | Redis（答案缓存 / 会话历史 / 并发锁） |
 | 评估 | RAGAS + 自研硬指标 |
 | 可观测 | Langfuse（可选，不配 key 自动降级） |
@@ -118,7 +122,7 @@ cd frontend && npm install && npm run dev
 完整报告见 [EVALUATION.md](EVALUATION.md)，复现命令在里面。rag 的 12s 是 CPU 上重排的串行开销，流式首字延迟约 9~13s，优化方向写在 [INTERVIEW.md](INTERVIEW.md) 里。
 
 ```bash
-python -m pytest tests/ -q      # 35 项单测
+python -m pytest tests/ -q      # 52 项单测
 ```
 
 ## 目录结构

@@ -6,13 +6,16 @@
 
 | 文件 | 内容 | 来源 | 许可/说明 |
 |---|---|---|---|
-| `cpu_intel.json` | Intel CPU 227 条（Skylake 起，含 Core Ultra） | 英文 Wikipedia "List of Intel processors" 系列页面，`scripts/extract_specs.py` 自动抽取 | 事实数据；页面内容 CC BY-SA 4.0，抽取产物注明来源 |
+| `cpu_intel.json` | Intel CPU 238 条（Skylake 起，含 Core Ultra，已过滤移动端） | 英文 Wikipedia "List of Intel processors" 系列页面，`scripts/extract_specs.py` 自动抽取 | 事实数据；页面内容 CC BY-SA 4.0，抽取产物注明来源 |
 | `gpu_nvidia.json` | NVIDIA GPU 89 条（GTX 10 系起） | 英文 Wikipedia "List of Nvidia graphics processing units" | 同上 |
 | `gpu_amd.json` | AMD GPU 76 条（RX 400 系起） | 英文 Wikipedia "List of AMD graphics processing units" | 同上 |
-| `cpu_amd.json` | AMD 桌面 CPU 24 条（锐龙 3000~9000 系） | 人工整理（厂商公开规格） | 事实数据 |
+| `gpu_meta.json` | 23 款主流显卡的公版长度与官方推荐电源 | NVIDIA / AMD 官网规格页 | 事实数据 |
+| `cpu_amd.json` | AMD 桌面 CPU 27 条（锐龙 3000~9000 系，含 5500X3D/5600X3D/5700X3D） | 人工整理（厂商公开规格） | 事实数据 |
 | `motherboard.json` | 主板 32 款 | 人工整理（厂商公开规格） | 事实数据 |
 | `memory.json` | 内存 24 款 | 人工整理（厂商公开规格） | 事实数据 |
 | `psu.json` | 电源 28 款 | 人工整理（厂商公开规格） | 事实数据 |
+| `case.json` | 机箱 29 款（显卡限长 / 散热限高 / 板型支持 / 冷排位） | 网络检索整理（ZOL 参数页、太平洋电脑网、厂商官网） | 事实数据 |
+| `cooler.json` | 散热器 25 款（类型 / 解热能力 / 支持插槽 / 塔高或冷排） | 网络检索整理（厂商官网、ZOL 参数页）；部分一体式水冷的解热值按冷排规格行业惯例估算（240≈260W / 280≈290W / 360≈330W），来源字段已标注 | 事实数据 + 估算项已标注 |
 
 - PassMark 榜单（`passmark_cpu_list.html` / `passmark_gpu_list.html`）仅用于抽取**性能分数**，原始页面与数据不随仓库分发；PassMark 数据库条款限制再分发，产物中仅保留分数值并在 `source` 字段标注。
 - 所有型号的**规格参数（如 TDP、插槽、显存）属于事实信息**，不受版权保护；抓取页面的**排版与文字**受版权保护，故不入库。

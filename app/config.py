@@ -5,11 +5,12 @@ from functools import lru_cache
 from dotenv import dotenv_values
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# 仅将 HF_ENDPOINT 透传到 os.environ，供 huggingface_hub 读取（需在 import 模型库前生效）。
+# 仅将 HF 相关变量透传到 os.environ，供 huggingface_hub 读取（需在 import 模型库前生效）。
 # 不用 load_dotenv 全量加载，避免污染 os.environ 影响测试隔离。
-_hf_endpoint = dotenv_values(".env").get("HF_ENDPOINT")
-if _hf_endpoint:
-    os.environ.setdefault("HF_ENDPOINT", _hf_endpoint)
+_hf_env = dotenv_values(".env")
+for _key in ("HF_ENDPOINT", "HF_HOME", "HF_HUB_DISABLE_SYMLINKS"):
+    if _hf_env.get(_key):
+        os.environ.setdefault(_key, _hf_env[_key])
 
 
 class Settings(BaseSettings):

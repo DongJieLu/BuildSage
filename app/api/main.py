@@ -226,7 +226,7 @@ def delete_source(doc_id: int, svc=Depends(get_ingest_service), repo=Depends(get
 
 @app.get("/api/v1/specs")
 def specs(category: str, q: str = "", limit: int = 50):
-    if category not in ("cpu", "gpu", "motherboard", "memory", "psu"):
+    if category not in ("cpu", "gpu", "motherboard", "memory", "psu", "cooler", "case"):
         return fail(1001, f"不支持的 category: {category}", 400)
     try:
         from app.api.deps import get_spec_repository

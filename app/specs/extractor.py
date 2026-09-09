@@ -43,11 +43,13 @@ class BuildConfig(BaseModel):
     motherboard: str = Field(default="", description="主板型号或芯片组，如 Z790；未提及留空")
     memory: str = Field(default="", description="内存，如「DDR5 6000 32GB」；未提及留空")
     psu: str = Field(default="", description="电源，如「650W」；未提及留空")
+    cooler: str = Field(default="", description="散热器型号，如「利民PA120」「360水冷」；未提及留空")
+    case: str = Field(default="", description="机箱型号，如「先马趣造」；未提及留空")
     case_limit_mm: int | None = Field(default=None, description="机箱显卡限长毫米数；未提及为 null")
 
 
 CONFIG_SYSTEM_PROMPT = (
-    "你是装机配置清单抽取器。从用户的口语化描述中抽出 CPU、显卡、主板、内存、电源的型号，"
+    "你是装机配置清单抽取器。从用户的口语化描述中抽出 CPU、显卡、主板、内存、电源、散热器、机箱的型号，"
     "以及机箱显卡限长（毫米）。用户没提到的部件留空字符串，限长留 null。"
     "电源若只提到瓦数（如 650W），就填「650W」。型号保留用户原文，不要自行改写。"
 )
