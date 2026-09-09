@@ -1,4 +1,4 @@
-"""BuildSage FastAPI 服务：规格 5.10 API 契约（REST + SSE）。
+"""BuildSage FastAPI 服务：四通道问答（REST + SSE）+ 规格库 + 入库 + 统计。
 
 统一响应包 {"code":0,"data":{...},"msg":"ok"}；
 错误码：1001 参数错 / 2001 无证据 / 3001 服务内部错 / 4001 文档入库失败。
@@ -17,7 +17,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.api.deps import (
-    get_chat_service,
     get_ingest_service,
     get_knowledge_repository,
     get_session_store,
@@ -25,14 +24,15 @@ from app.api.deps import (
 )
 from app.api.schemas import ChatRequest
 from app.ingest.service import ALLOWED_TYPES, MAX_FILE_SIZE
+from app.rag.pipeline import answer, answer_stream
 
 logger = logging.getLogger(__name__)
 
-CATEGORIES = ("ai", "java", "test", "ops", "bigdata")
+# 知识库方向（攻略语料分类）；规格库五类不在其列（直查不依赖分类）
+CATEGORIES = ("guide", "cpu", "gpu", "motherboard", "memory", "psu")
 
 app = FastAPI(title="BuildSage 装机参谋 API", version="0.1.0")
 
-# 前后端分离：允许前端（Vite dev server / 构建产物）跨域访问。无 cookie 鉴权，故用 "*"。
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -40,8 +40,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# --- 统一响应 ---
 
 def _resp(code: int, data, msg: str, status: int = 200) -> JSONResponse:
     return JSONResponse(status_code=status, content={"code": code, "data": data, "msg": msg})
@@ -55,37 +53,35 @@ def fail(code: int, msg: str, status: int = 200) -> JSONResponse:
     return _resp(code, None, msg, status)
 
 
-def _jsonable(obj):
-    """把 SQLAlchemy 返回里的 datetime/date 转成字符串，保证 JSON 可序列化。"""
-    if isinstance(obj, dict):
-        return {k: _jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_jsonable(v) for v in obj]
-    if hasattr(obj, "isoformat"):
-        return obj.isoformat(sep=" ", timespec="seconds")
-    return obj
+def _validate(req: ChatRequest) -> str | None:
+    question = (req.question or "").strip()
+    if not question:
+        return "问题不能为空"
+    if len(question) > 2000:
+        return "问题过长（>2000 字符）"
+    if req.category and req.category not in CATEGORIES:
+        return f"不支持的 category: {req.category}"
+    return None
 
 
-# --- 会话问答 ---
+# --- 问答 ---
+
 
 @app.post("/api/v1/chat")
-def chat(req: ChatRequest, svc=Depends(get_chat_service), session=Depends(get_session_store)):
-    question = req.question.strip()
-    if not question:
-        return fail(1001, "问题不能为空", 400)
-    if len(question) > 2000:
-        return fail(1001, "问题过长（>2000 字符）", 400)
-    if req.category and req.category not in CATEGORIES:
-        return fail(1001, f"不支持的 category: {req.category}", 400)
-
-    lock_key = f"{req.category or 'all'}:{question}"
+def chat(req: ChatRequest, session=Depends(get_session_store)):
+    err = _validate(req)
+    if err:
+        return fail(1001, err, 400)
+    lock_key = f"{req.category or 'all'}:{req.question}"
     if not session.acquire_lock(lock_key):
-        return ok({
-            "intent": "reject", "answer": "同一问题正在处理中，请稍后重试",
-            "citations": [], "strategy": "", "latency_ms": 0, "busy": True,
-        })
+        return ok({"intent": "reject", "answer": "同一问题正在处理中，请稍后重试",
+                  "citations": [], "strategy": "", "latency_ms": 0, "busy": True})
     try:
-        result = svc.chat(question, category=req.category, session_id=req.session_id)
+        history = session.get_history(req.session_id) if req.session_id else []
+        result = answer(req.question, category=req.category, session_id=req.session_id, history=history)
+        if req.session_id:
+            session.append(req.session_id, req.question, result.get("answer", ""))
+        _record_log(req, result)
         return ok(result)
     except Exception as exc:  # noqa: BLE001
         logger.exception("chat 接口异常")
@@ -95,19 +91,21 @@ def chat(req: ChatRequest, svc=Depends(get_chat_service), session=Depends(get_se
 
 
 @app.post("/api/v1/chat/stream")
-def chat_stream(req: ChatRequest, svc=Depends(get_chat_service)):
-    question = req.question.strip()
-    if not question:
-        return fail(1001, "问题不能为空", 400)
-    if len(question) > 2000:
-        return fail(1001, "问题过长（>2000 字符）", 400)
-    if req.category and req.category not in CATEGORIES:
-        return fail(1001, f"不支持的 category: {req.category}", 400)
+def chat_stream(req: ChatRequest, session=Depends(get_session_store)):
+    err = _validate(req)
+    if err:
+        return fail(1001, err, 400)
 
     def gen():
+        answer_text = ""
         try:
-            for event in svc.stream_chat(question, category=req.category, session_id=req.session_id):
+            history = session.get_history(req.session_id) if req.session_id else []
+            for event in answer_stream(req.question, category=req.category, session_id=req.session_id, history=history):
+                if event.get("type") == "token":
+                    answer_text = answer_text + event.get("content", "")
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            if req.session_id:
+                session.append(req.session_id, req.question, answer_text)
         except Exception as exc:  # noqa: BLE001
             logger.exception("stream 接口异常")
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
@@ -119,11 +117,31 @@ def chat_stream(req: ChatRequest, svc=Depends(get_chat_service)):
     )
 
 
+def _record_log(req: ChatRequest, result: dict) -> None:
+    try:
+        from app.api.deps import get_qa_log
+
+        get_qa_log().insert_log(
+            session_id=req.session_id or "",
+            question=req.question,
+            intent=result.get("intent", ""),
+            strategy=result.get("strategy", ""),
+            route_detail=result.get("route_detail", {}),
+            evidence_ids=result.get("evidence_ids", []),
+            answer=result.get("answer", ""),
+            latency_ms=result.get("latency_ms", 0),
+            cache_hit=result.get("cache_hit", False),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("qa_log 写入失败: %s", exc)
+
+
 # --- 文档入库 / 检索 ---
+
 
 @app.post("/api/v1/ingest")
 async def ingest(file: UploadFile = File(...), category: str = Form(...), svc=Depends(get_ingest_service)):
-    if not category or category not in CATEGORIES:
+    if category not in CATEGORIES:
         return fail(4001, f"不支持的 category: {category}", 400)
     suffix = Path(file.filename or "").suffix.lstrip(".").lower()
     if suffix not in ALLOWED_TYPES:
@@ -152,23 +170,44 @@ async def ingest(file: UploadFile = File(...), category: str = Form(...), svc=De
 def sources(category: str | None = None, repo=Depends(get_knowledge_repository)):
     try:
         docs = repo.list_documents(category or None)
-        return ok({"documents": _jsonable(docs), "count": len(docs)})
+        return ok({"documents": docs, "count": len(docs)})
     except Exception as exc:  # noqa: BLE001
         logger.exception("sources 接口异常")
         return fail(3001, f"服务内部错误: {exc}", 500)
 
 
 @app.delete("/api/v1/sources/{doc_id}")
-def delete_source(doc_id: int, svc=Depends(get_ingest_service)):
+def delete_source(doc_id: int, svc=Depends(get_ingest_service), repo=Depends(get_knowledge_repository)):
     try:
-        svc.delete_document(doc_id)
+        category = None
+        docs = repo.list_documents()
+        category = next((d.get("category") for d in docs if d.get("doc_id") == doc_id), None)
+        svc.delete_document(doc_id, category=category)
         return ok({"deleted": doc_id})
     except Exception as exc:  # noqa: BLE001
         logger.exception("delete source 接口异常")
         return fail(3001, f"删除失败: {exc}", 500)
 
 
+# --- 规格库 ---
+
+
+@app.get("/api/v1/specs")
+def specs(category: str, q: str = "", limit: int = 50):
+    if category not in ("cpu", "gpu", "motherboard", "memory", "psu"):
+        return fail(1001, f"不支持的 category: {category}", 400)
+    try:
+        from app.api.deps import get_spec_repository
+
+        rows = get_spec_repository().search(category, q, limit=limit) if q else get_spec_repository().search_all(category, limit=limit)
+        return ok({"items": rows, "count": len(rows)})
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("specs 接口异常")
+        return fail(3001, f"服务内部错误: {exc}", 500)
+
+
 # --- 统计 / 健康 ---
+
 
 @app.get("/api/v1/stats")
 def stats(days: int = 7, svc=Depends(get_stats_service)):
@@ -186,6 +225,7 @@ def health():
         "redis": _check_redis(),
         "vector_store": _check_vector(),
         "llm": _check_llm(),
+        "specs": _check_specs(),
     }
     return ok(checks)
 
@@ -214,22 +254,30 @@ def _check_redis() -> bool:
 
 def _check_vector() -> bool:
     try:
-        from app.rag.vector_store import VectorStore
+        from app.ingest.pipeline import get_vectorstore
 
-        VectorStore().count()
-        return True
+        return get_vectorstore()._collection.count() >= 0
     except Exception:  # noqa: BLE001
         return False
 
 
 def _check_llm() -> bool:
     try:
-        from app.llm import get_llm
+        from app.llm.models import get_chat_model
 
-        get_llm()
+        get_chat_model()
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+def _check_specs() -> dict:
+    try:
+        from app.api.deps import get_spec_repository
+
+        return get_spec_repository().count()
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 if __name__ == "__main__":

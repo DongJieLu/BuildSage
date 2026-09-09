@@ -6,8 +6,8 @@ from functools import lru_cache
 from app.db.qa_log_repository import QALogRepository
 from app.ingest.repository import KnowledgeRepository
 from app.ingest.service import IngestService
-from app.rag.chat_service import ChatService
 from app.rag.session import SessionStore
+from app.specs.repository import SpecRepository
 
 from app.api.stats import StatsService
 
@@ -15,11 +15,6 @@ from app.api.stats import StatsService
 @lru_cache
 def _session_store() -> SessionStore:
     return SessionStore()
-
-
-@lru_cache
-def _chat_service() -> ChatService:
-    return ChatService(session_store=_session_store(), qa_log=_qa_log())
 
 
 @lru_cache
@@ -38,12 +33,17 @@ def _knowledge_repository() -> KnowledgeRepository:
 
 
 @lru_cache
+def _spec_repository() -> SpecRepository:
+    return SpecRepository()
+
+
+@lru_cache
 def _stats_service() -> StatsService:
     return StatsService(session_store=_session_store())
 
 
-def get_chat_service() -> ChatService:
-    return _chat_service()
+def get_qa_log() -> QALogRepository:
+    return _qa_log()
 
 
 def get_session_store() -> SessionStore:
@@ -56,6 +56,10 @@ def get_ingest_service() -> IngestService:
 
 def get_knowledge_repository() -> KnowledgeRepository:
     return _knowledge_repository()
+
+
+def get_spec_repository() -> SpecRepository:
+    return _spec_repository()
 
 
 def get_stats_service() -> StatsService:

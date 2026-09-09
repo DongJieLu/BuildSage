@@ -48,6 +48,19 @@ class QALogRepository:
             )
             return result.lastrowid
 
+    def hot_questions(self, limit: int = 10) -> list[dict]:
+        """近 30 天热点问题 Top N（按提问次数聚合）。"""
+        since = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT question, COUNT(*) AS cnt FROM qa_log "
+                    "WHERE created_at >= :since GROUP BY question ORDER BY cnt DESC LIMIT :limit"
+                ),
+                {"since": since, "limit": limit},
+            ).fetchall()
+        return [{"question": r[0], "count": int(r[1])} for r in rows]
+
     def stats(self, days: int = 7) -> dict:
         """聚合近 N 天：总问答数 / 意图分布 / 策略分布 / 平均延迟 / 日均序列。"""
         since = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")

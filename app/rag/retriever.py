@@ -1,133 +1,106 @@
-"""检索器：向量召回 + 关键词召回 + RRF 混合融合。
+"""混合检索器（LangChain 版）：BM25 + 向量 → EnsembleRetriever（RRF 融合）→ 重排。
 
-M3 仅实现向量召回；M5 增加关键词召回（MySQL chunk 词元/中文 bigram 匹配）与 RRF 融合。
+EduRAG 的手写三件（向量召回 / MySQL 关键词召回 / 手写 RRF）被标准组件取代：
+- BM25Retriever：稀疏召回（无需 MySQL 全表扫描，进程内存索引）
+- vectorstore.as_retriever()：稠密召回（BGE-M3 + Chroma）
+- EnsembleRetriever：RRF 排名融合（只看排名不看原始分数量纲）
+- ContextualCompressionRetriever + CrossEncoderReranker：bge-reranker 精排
 """
 from __future__ import annotations
 
 import logging
-import re
+from functools import lru_cache
 
-from app.embeddings import get_encoder
-from app.rag.vector_store import VectorStore
+from langchain_community.retrievers import BM25Retriever
+from langchain_classic.retrievers import EnsembleRetriever, ContextualCompressionRetriever
+from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
+
+from app.ingest.repository import KnowledgeRepository
+from app.ingest.pipeline import get_vectorstore
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TOP_K = 50
-RRF_K = 60  # RRF 平滑常数
-
-_ASCII_TERM_RE = re.compile(r"[a-zA-Z0-9]+")
-_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+TOP_K_RECALL = 50
 
 
-def _keyword_score(query: str, text: str) -> float:
-    """关键词命中分：ASCII 词元交集数 + 中文 bigram 交集数。"""
-    q_terms = {t.lower() for t in _ASCII_TERM_RE.findall(query) if len(t) >= 2}
-    t_terms = {t.lower() for t in _ASCII_TERM_RE.findall(text) if len(t) >= 2}
-    ascii_hits = len(q_terms & t_terms)
+def _all_chunks(category: str | None = None) -> list[Document]:
+    """从 MySQL 读全部 chunk 构建 BM25 索引（含 category 过滤）。"""
+    try:
+        rows = KnowledgeRepository().list_chunks(category)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("BM25 索引构建读取 MySQL 失败: %s", exc)
+        return []
+    return [
+        Document(
+            page_content=r["chunk_text"],
+            metadata={
+                "chunk_id": r["chunk_id"],
+                "doc_id": r["doc_id"],
+                "doc_name": r["doc_name"],
+                "category": r["category"],
+                "title": r["title"] or "",
+                "page_no": r["page_no"] or 0,
+            },
+        )
+        for r in rows
+    ]
 
-    q_cn = "".join(_CJK_RE.findall(query))
-    t_cn = "".join(_CJK_RE.findall(text))
-    q_bg = {q_cn[i : i + 2] for i in range(len(q_cn) - 1)}
-    t_bg = {t_cn[i : i + 2] for i in range(len(t_cn) - 1)}
-    cn_hits = len(q_bg & t_bg)
-    return float(ascii_hits + cn_hits)
+
+@lru_cache(maxsize=16)
+def _bm25_retriever(category: str | None) -> BM25Retriever | None:
+    docs = _all_chunks(category)
+    if not docs:
+        return None
+    return BM25Retriever.from_documents(docs, k=TOP_K_RECALL)
 
 
-class Retriever:
-    def __init__(self, vector_store=None, encoder=None, repository=None) -> None:
-        self._store = vector_store or VectorStore()
-        self._encoder = encoder or get_encoder()
-        self._repo = repository
+@lru_cache(maxsize=16)
+def _vector_retriever(category: str | None) -> BaseRetriever:
+    vs = get_vectorstore()
+    if category:
+        return vs.as_retriever(search_kwargs={"k": TOP_K_RECALL, "filter": {"category": category}})
+    return vs.as_retriever(search_kwargs={"k": TOP_K_RECALL})
 
-    def _get_repo(self):
-        if self._repo is None:
-            from app.ingest.repository import KnowledgeRepository
 
-            self._repo = KnowledgeRepository()
-        return self._repo
+@lru_cache(maxsize=1)
+def _reranker_compressor():
+    """bge-reranker-large 精排压缩器（本地加载失败返回 None，降级为融合结果）。"""
+    try:
+        from langchain_huggingface import HuggingFaceCrossEncoder
+        from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
 
-    def retrieve(
-        self,
-        query: str,
-        category: str | None = None,
-        top_k: int = DEFAULT_TOP_K,
-    ) -> list[dict]:
-        """纯向量召回，返回 [{id, text, metadata, score}]，按相似度降序。"""
-        if not query or not query.strip():
-            return []
-        query_embedding = self._encoder.encode([query])[0]
-        return self._store.search(query_embedding, top_k=top_k, category=category)
+        from app.config import get_settings
 
-    def keyword_retrieve(
-        self,
-        query: str,
-        category: str | None = None,
-        top_k: int = DEFAULT_TOP_K,
-    ) -> list[dict]:
-        """关键词召回：MySQL chunk 词元匹配，返回 [{id, text, metadata, score}]。"""
-        if not query or not query.strip():
-            return []
-        try:
-            chunks = self._get_repo().list_chunks(category)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("关键词召回读取 MySQL 失败，降级为空: %s", exc)
-            return []
-        scored = []
-        for c in chunks:
-            s = _keyword_score(query, c.get("chunk_text") or "")
-            if s <= 0:
-                continue
-            scored.append(
-                {
-                    "id": str(c["chunk_id"]),
-                    "text": c.get("chunk_text") or "",
-                    "metadata": {
-                        "chunk_id": c.get("chunk_id"),
-                        "doc_id": c.get("doc_id"),
-                        "doc_name": c.get("doc_name") or "",
-                        "category": c.get("category") or "",
-                        "title": c.get("title") or "",
-                        "page_no": c.get("page_no") or 0,
-                    },
-                    "score": s,
-                }
-            )
-        scored.sort(key=lambda x: x["score"], reverse=True)
-        return scored[:top_k]
+        model = HuggingFaceCrossEncoder(model_name=get_settings().rerank_model_name)
+        return CrossEncoderReranker(model=model, top_n=5)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("重排模型加载失败，降级为 RRF 融合结果: %s", exc)
+        return None
 
-    def hybrid_retrieve(
-        self,
-        query: str,
-        category: str | None = None,
-        top_k: int = DEFAULT_TOP_K,
-    ) -> list[dict]:
-        """混合检索：向量召回 + 关键词召回做 RRF 融合，返回融合后 top_k。"""
-        vec_hits = self.retrieve(query, category=category, top_k=top_k)
-        kw_hits = self.keyword_retrieve(query, category=category, top_k=top_k)
-        if not kw_hits:
-            return vec_hits[:top_k]
 
-        fused: dict[str, dict] = {}
-        for rank, h in enumerate(vec_hits):
-            key = self._hit_key(h)
-            if key is None:
-                continue
-            entry = fused.setdefault(key, {"hit": h, "score": 0.0})
-            entry["score"] += 1.0 / (RRF_K + rank)
-        for rank, h in enumerate(kw_hits):
-            key = self._hit_key(h)
-            if key is None:
-                continue
-            entry = fused.setdefault(key, {"hit": h, "score": 0.0})
-            entry["score"] += 1.0 / (RRF_K + rank)
+def get_hybrid_retriever(category: str | None = None) -> BaseRetriever:
+    """按方向构建（或复用）混合检索器：Ensemble(BM25+向量)。"""
+    bm25 = _bm25_retriever(category)
+    vec = _vector_retriever(category)
+    if bm25 is None:
+        return vec
+    return EnsembleRetriever(retrievers=[bm25, vec], k=TOP_K_RECALL, id_key="chunk_id")
 
-        merged = sorted(fused.values(), key=lambda x: x["score"], reverse=True)
-        return [m["hit"] for m in merged[:top_k]]
 
-    @staticmethod
-    def _hit_key(hit: dict) -> str | None:
-        meta = hit.get("metadata") or {}
-        chunk_id = meta.get("chunk_id")
-        if chunk_id is None:
-            return hit.get("id")
-        return str(chunk_id)
+def retrieve(query: str, category: str | None = None, top_k: int = 5, rerank: bool = True) -> list[Document]:
+    """一站式检索入口：混合召回 →（可选）重排精筛，返回 Top-K 文档。"""
+    hybrid = get_hybrid_retriever(category)
+    compressor = _reranker_compressor() if rerank else None
+    if compressor is not None:
+        retriever = ContextualCompressionRetriever(base_compressor=compressor, base_retriever=hybrid)
+    else:
+        retriever = hybrid
+    docs = retriever.invoke(query)
+    return docs[:top_k]
+
+
+def invalidate_retriever_cache(category: str | None = None) -> None:
+    """文档增删后重建 BM25 / 检索器缓存。"""
+    _bm25_retriever.cache_clear()
+    _vector_retriever.cache_clear()

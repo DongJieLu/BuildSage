@@ -1,106 +1,113 @@
-"""三层查询路由：L1 规则词 / L2 FAQ 语义相似度 / L3 LLM 分类。
+"""查询路由（LangChain 版）：L1 规则词 + L2 LLM 结构化分类 → param | compat | rag | reject。
 
-输出 {intent: faq|rag|reject, confidence, reason}。
-决策：L1 命中→faq；否则 L2≥0.90→faq；0.75~0.90 且 L3==faq→faq；
-L3==reject 且 L2<0.75→reject；其余→rag。
+EduRAG 三层路由（规则/FAQ语义/LLM 分类）演进为四通道：
+- param：参数直查（型号 + 参数字段，查规格库）
+- compat：兼容性校验（配置清单或多件对比）
+- rag：选购攻略深度问答
+- reject：寒暄/无关
+L1 规则零成本拦截高频模式，其余走 with_structured_output 的 LLM 分类。
 """
 from __future__ import annotations
 
 import logging
+import re
 
-from app.llm import get_llm
-from app.llm.base import BaseLLM, ChatMessage
-from app.rag.faq import FAQService
-from app.rag.generator import _extract_json, _to_float
+from pydantic import BaseModel, Field
+
+from app.llm.models import get_chat_model
 
 logger = logging.getLogger(__name__)
 
-# L1 规则词（技术问答领域的 faq 倾向词，避开第三方品牌/人名等字样）
-# 注意：刻意排除「是什么」「如何」「原理」等宽泛词——它们也高频出现在深度/开放问题中，
-# 会误判 complex 类问题为 faq，交由 L2/L3 兜底更准确。
-FAQ_RULE_WORDS = ("什么是", "定义", "区别", "怎么用", "介绍", "概念", "有什么用")
+# L1 规则词：确定性强的模式直接分流，不花 LLM 调用
 CHITCHAT_WORDS = ("你好", "您好", "谢谢", "再见", "在吗", "嗨", "hello", "hi")
-NEGATION_WORDS = ("不是", "不要", "没有", "并非", "难道", "别")
-
-L2_FAQ_THRESHOLD = 0.90
-L2_PENDING_THRESHOLD = 0.75
-
-CLASSIFY_SYSTEM_PROMPT = (
-    "你是查询意图分类器。将用户问题分为三类并只输出一个 JSON 对象：\n"
-    "- faq：可被常见问答直接回答的定义/概念/区别类问题\n"
-    "- rag：需要检索文档深度回答的复杂或开放问题\n"
-    "- reject：寒暄、闲聊或与知识库完全无关的问题\n"
-    '输出格式：{"intent":"faq|rag|reject","confidence":0.0,"reason":"简短理由"}'
+# 型号 + 参数字段模式：如 "4070 的 tdp"、"14900K 功耗多少"
+_MODEL_RE = re.compile(
+    r"\b(?:rtx|gtx)\s?\d{3,4}\w*|(?:radeon\s+)?rx\s?\d{3,4}\w*|i[3579]-\d{4,5}\w*"
+    r"|(?:ryzen\s?\d\s?\d{4}\w*)|ultra\s?\d\s?\d{3}\w*"
+    r"|\b[abhzxy]?\d{3}[a-z]?\b(?:\s?(?:motherboard|主板|芯片组|tomahawk|gaming|aorus|tuf|plus|max))?",
+    re.I,
+)
+_PARAM_WORDS = (
+    "tdp", "功耗", "参数", "多少瓦", "瓦数", "显存", "核心数", "线程", "频率",
+    "插槽", "socket", "接口", "规格", "多大内存", "长度", "vram", "价格",
+)
+_COMPAT_WORDS = (
+    "兼容", "能不能配", "能不能用", "带得动", "能装吗", "冲突", "匹配吗",
+    "能插", "行不行", "合适吗", "搭不搭", "装得上", "够吗", "够不够",
+    "能用", "可以用", "支持吗", "装吗", "上得了", "吃得住", "支持",
 )
 
 
+class RouteDecision(BaseModel):
+    """with_structured_output 的目标 schema。"""
+
+    intent: str = Field(description="param | compat | rag | reject")
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    reason: str = Field(default="")
+
+
+ROUTE_SYSTEM_PROMPT = (
+    "你是装机问答的路由分类器。将用户问题分为四类，只依据问题本身判断：\n"
+    "- param：询问具体硬件型号的某个参数数值（如「RTX 4070 的 TDP 是多少」「i9-14900K 用什么插槽」）\n"
+    "- compat：判断多个配件之间能否搭配/兼容，或配置清单的功耗/尺寸核算（如「i9-14900K 配 650W 电源够吗」「B650 主板能用 DDR4 吗」）\n"
+    "- rag：装机选购建议、科普、攻略类开放问题（如「5000 预算怎么配」「DDR4 和 DDR5 怎么选」）\n"
+    "- reject：寒暄闲聊或与装机完全无关的问题"
+)
+
+VALID_INTENTS = ("param", "compat", "rag", "reject")
+
+
+def rule_route(question: str) -> RouteDecision | None:
+    """L1 规则：零成本拦截确定模式。"""
+    q = (question or "").strip()
+    if not q:
+        return RouteDecision(intent="reject", confidence=1.0, reason="空问题")
+    if len(q) <= 20 and any(w in q.lower() for w in CHITCHAT_WORDS):
+        return RouteDecision(intent="reject", confidence=0.95, reason="寒暄/闲聊")
+    q_lower = q.lower()
+    has_model = bool(_MODEL_RE.search(q))
+    if has_model and any(w in q_lower for w in _PARAM_WORDS):
+        # 型号+参数词 → param；但若同时出现兼容词（"4070 配 650W 电源够吗"）→ compat
+        if any(w in q for w in _COMPAT_WORDS):
+            return RouteDecision(intent="compat", confidence=0.9, reason="型号+兼容词命中")
+        return RouteDecision(intent="param", confidence=0.92, reason="型号+参数词命中")
+    if any(w in q for w in _COMPAT_WORDS):
+        return RouteDecision(intent="compat", confidence=0.85, reason="兼容词命中")
+    return None
+
+
 class Router:
-    def __init__(self, faq_service=None, llm=None) -> None:
-        self._faq = faq_service or FAQService()
+    def __init__(self, llm=None) -> None:
         self._llm = llm
 
-    def _get_llm(self) -> BaseLLM:
-        if self._llm is None:
-            self._llm = get_llm()
-        return self._llm
-
-    @staticmethod
-    def _rule_route(question: str) -> dict | None:
-        q = question.strip()
-        if len(q) <= 20 and any(w in q.lower() for w in CHITCHAT_WORDS):
-            return {"intent": "reject", "confidence": 0.95, "reason": "寒暄/闲聊"}
-        has_rule = any(w in q for w in FAQ_RULE_WORDS)
-        has_neg = any(w in q for w in NEGATION_WORDS)
-        if has_rule and not has_neg:
-            return {"intent": "faq", "confidence": 0.95, "reason": "规则词命中"}
-        return None
-
-    def _llm_classify(self, question: str) -> dict:
+    def _classify(self, question: str) -> RouteDecision:
         try:
-            messages = [
-                ChatMessage(role="system", content=CLASSIFY_SYSTEM_PROMPT),
-                ChatMessage(role="user", content=question),
-            ]
-            resp = self._get_llm().chat(messages, temperature=0.0)
-            data = _extract_json(resp.content)
-            if data and data.get("intent") in ("faq", "rag", "reject"):
-                return {
-                    "intent": data["intent"],
-                    "confidence": _to_float(data.get("confidence"), 0.5),
-                    "reason": data.get("reason") or "",
-                }
+            llm = self._llm or get_chat_model()
+            structured = llm.with_structured_output(RouteDecision)
+            decision = structured.invoke(
+                [{"role": "system", "content": ROUTE_SYSTEM_PROMPT}, {"role": "user", "content": question}]
+            )
+            if isinstance(decision, RouteDecision) and decision.intent in VALID_INTENTS:
+                return decision
+            return RouteDecision(intent="rag", confidence=0.5, reason="结构化输出异常回退 rag")
         except Exception as exc:  # noqa: BLE001
-            logger.warning("L3 LLM 分类失败，默认 rag: %s", exc)
-        return {"intent": "rag", "confidence": 0.5, "reason": "LLM 分类失败，默认 rag"}
+            logger.warning("LLM 路由分类失败，默认 rag: %s", exc)
+            return RouteDecision(intent="rag", confidence=0.5, reason=f"LLM 分类失败默认 rag: {exc}")
 
-    def route(self, question: str, category: str | None = None) -> dict:
-        detail: dict = {"l1": None, "l2": None, "l3": None}
-        if not question or not question.strip():
-            detail["l1"] = {"hit": True, "intent": "reject", "reason": "空问题"}
-            return {"intent": "reject", "confidence": 1.0, "reason": "空问题", "route_detail": detail}
-        l1 = self._rule_route(question)
-        if l1:
-            detail["l1"] = {"hit": True, "intent": l1["intent"], "reason": l1["reason"]}
-            l1["route_detail"] = detail
-            return l1
-
-        sim = self._faq.best_similarity(question, category)
-        detail["l2"] = {"similarity": round(sim, 4)}
-
-        if sim >= L2_FAQ_THRESHOLD:
-            detail["l2"]["decision"] = "faq"
-            return {"intent": "faq", "confidence": min(round(sim, 4), 0.95), "reason": "语义相似度≥0.90", "route_detail": detail}
-
-        if sim >= L2_PENDING_THRESHOLD:
-            detail["l2"]["decision"] = "pending"
-            l3 = self._llm_classify(question)
-            detail["l3"] = {"intent": l3["intent"], "confidence": l3["confidence"], "reason": l3["reason"]}
-            if l3["intent"] == "faq":
-                return {"intent": "faq", "confidence": l3["confidence"], "reason": "语义待定，LLM 确认 faq", "route_detail": detail}
-            return {"intent": "rag", "confidence": l3["confidence"], "reason": "语义待定，非 faq 走 RAG", "route_detail": detail}
-
-        l3 = self._llm_classify(question)
-        detail["l3"] = {"intent": l3["intent"], "confidence": l3["confidence"], "reason": l3["reason"]}
-        if l3["intent"] == "reject":
-            return {"intent": "reject", "confidence": l3["confidence"], "reason": "语义低，LLM 判拒答", "route_detail": detail}
-        return {"intent": "rag", "confidence": l3["confidence"], "reason": "默认 RAG", "route_detail": detail}
+    def route(self, question: str, history: list | None = None) -> dict:
+        """返回 {intent, confidence, reason, route_detail}。"""
+        detail: dict = {"l1": None, "l2": None}
+        l1 = rule_route(question)
+        if l1 is not None:
+            detail["l1"] = {"hit": True, "intent": l1.intent, "reason": l1.reason}
+            return {"intent": l1.intent, "confidence": l1.confidence, "reason": l1.reason, "route_detail": detail}
+        decision = self._classify(question)
+        if decision.intent not in VALID_INTENTS:
+            decision = RouteDecision(intent="rag", confidence=0.5, reason=f"非法 intent 回退 rag: {decision.intent}")
+        detail["l2"] = {"intent": decision.intent, "confidence": decision.confidence, "reason": decision.reason}
+        return {
+            "intent": decision.intent,
+            "confidence": decision.confidence,
+            "reason": decision.reason,
+            "route_detail": detail,
+        }
