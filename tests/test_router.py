@@ -14,9 +14,15 @@ def test_l1_param_english():
 
 
 def test_l1_compat_keyword():
-    for q in ("B650 主板能用 DDR4 吗", "i9-14900K 配 650W 电源带得动吗", "这个配置兼容吗", "Z790 支持 DDR5 吗"):
+    for q in ("B650 主板能用 DDR4 吗", "i9-14900K 配 650W 电源带得动吗", "Z790 支持 DDR5 吗"):
         d = rule_route(q)
         assert d is not None and d.intent == "compat", q
+
+
+def test_l1_compat_needs_concrete_hardware():
+    """无具体型号/瓦数的"兼容"类攻略问题交给 L2 LLM，避免误判。"""
+    for q in ("这个配置兼容吗", "装机最容易翻车的兼容性问题", "下单前应该核对哪些兼容性"):
+        assert rule_route(q) is None, q
 
 
 def test_l1_compat_beats_param_when_both():

@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # --- 向量库（开发期 Chroma）---
     chroma_persist_dir: str = "./data/chroma"
 
+    # --- 可观测（Langfuse，缺 key 静默降级为不追踪）---
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://cloud.langfuse.com"
+
     # --- 服务 ---
     log_level: str = "INFO"
 

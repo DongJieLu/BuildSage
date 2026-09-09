@@ -222,7 +222,9 @@ def get_graph():
 
 def answer(question: str, category: str | None = None, session_id: str | None = None,
            history: list | None = None) -> dict:
-    """同步问答入口（非流式）。"""
+    """同步问答入口（非流式）。Langfuse 可用时全链路追踪。"""
+    from app.observability.langfuse import with_observability
+
     state: PipelineState = {
         "question": question,
         "category": category,
@@ -230,7 +232,7 @@ def answer(question: str, category: str | None = None, session_id: str | None = 
         "history": history or [],
         "start_ts": time.perf_counter(),
     }
-    final = get_graph().invoke(state)
+    final = get_graph().invoke(state, config=with_observability())
     if final.get("cached") is not None:
         out = dict(final["cached"])
         out["cache_hit"] = True

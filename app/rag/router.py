@@ -36,6 +36,13 @@ _COMPAT_WORDS = (
     "能插", "行不行", "合适吗", "搭不搭", "装得上", "够吗", "够不够",
     "能用", "可以用", "支持吗", "装吗", "上得了", "吃得住", "支持",
 )
+# 兼容判断必须有"具体硬件指称"（型号/瓦数/芯片组）才走 L1；
+# 否则「装机最容易翻车的兼容性问题」这类攻略问题会被误判为 compat。
+_CONCRETE_RE = re.compile(
+    r"(?:rtx|gtx|rx)\s?\d{3,4}\w*|i[3579]-\d{4,5}\w*|ryzen\s?\d\s?\d{4}\w*|ultra\s?\d\s?\d{3}\w*"
+    r"|\d{3,4}\s?w\b|\b[abhzx]\d{3}[a-z]{0,2}\b",
+    re.I,
+)
 
 
 class RouteDecision(BaseModel):
@@ -71,8 +78,8 @@ def rule_route(question: str) -> RouteDecision | None:
         if any(w in q for w in _COMPAT_WORDS):
             return RouteDecision(intent="compat", confidence=0.9, reason="型号+兼容词命中")
         return RouteDecision(intent="param", confidence=0.92, reason="型号+参数词命中")
-    if any(w in q for w in _COMPAT_WORDS):
-        return RouteDecision(intent="compat", confidence=0.85, reason="兼容词命中")
+    if any(w in q for w in _COMPAT_WORDS) and _CONCRETE_RE.search(q):
+        return RouteDecision(intent="compat", confidence=0.85, reason="具体硬件+兼容词命中")
     return None
 
 
