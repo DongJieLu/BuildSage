@@ -133,7 +133,7 @@ class _Config:
 class _StubSpecRepo:
     def best_match(self, category, query):
         data = {
-            "gpu": {"gpu_id": 1, "name": "GeForce RTX 4070", "tdp_w": 200, "vram_gb": 12},
+            "gpu": {"gpu_id": 1, "name": "GeForce RTX 4090", "tdp_w": 450, "vram_gb": 24},
             "cpu": {"cpu_id": 2, "name": "Intel Core i9-14900K", "socket": "LGA1700",
                     "tdp_w": 125, "tdp_max_w": 253, "memory_types": "DDR4,DDR5"},
             "motherboard": {"mb_id": 3, "name": "MSI MAG Z790 TOMAHAWK", "socket": "LGA1700",
