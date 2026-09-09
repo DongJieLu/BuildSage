@@ -247,6 +247,8 @@ def extract_cpu_intel() -> list[dict]:
         for row in rows:
             if not row:
                 continue
+            if any("BGA" in c.upper() for c in row):   # 跳过移动端 BGA 封装（板载不可装机）
+                continue
             # 取名：两列式（branding "Core i9" + model "14900KS"）或一体式（"i9-14900K"）
             brand_text = row[brand_col] if (brand_col is not None and brand_col < len(row)) else ""
             model_text = row[model_col] if (model_col is not None and model_col < len(row)) else ""
@@ -262,7 +264,7 @@ def extract_cpu_intel() -> list[dict]:
             if not name:
                 continue
             token = name.replace("Intel Core Ultra ", "").replace("Intel Core ", "")
-            if re.search(r"(HX|H|U)$", token):   # 移动端后缀
+            if re.search(r"(HK|HQ|H|U|Y)$", token):   # 移动端后缀
                 continue
             # TDP：tdp 列可能有多列（base / max turbo）
             tdp = tdp_max = None

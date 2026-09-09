@@ -50,6 +50,19 @@ class SpecRepository:
             rows = conn.execute(text(sql), {"pat": f"%{q}%", "limit": limit}).mappings().all()
             return [dict(r) for r in rows]
 
+    def search_all(self, category: str, limit: int = 100) -> list[dict]:
+        """浏览某类全部规格（无关键词），按年份/名称排序。"""
+        if category not in TABLES:
+            return []
+        table = TABLES[category]
+        # 只有 cpu/gpu/motherboard 有 release_year 列
+        order = "ORDER BY release_year DESC, name" if category in ("cpu", "gpu", "motherboard") else "ORDER BY name"
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                text(f"SELECT * FROM {table} {order} LIMIT :limit"), {"limit": limit}
+            ).mappings().all()
+        return [dict(r) for r in rows]
+
     def best_match(self, category: str, query: str) -> dict | None:
         """返回最相关的单条规格（无候选返回 None）。"""
         cands = self.search(category, query, limit=5)

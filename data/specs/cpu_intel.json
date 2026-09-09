@@ -45,6 +45,36 @@
   "source": "wikipedia"
  },
  {
+  "name": "Intel Core Ultra 9 290HX",
+  "brand": "Intel",
+  "socket": "LGA1851",
+  "cores": 24,
+  "threads": null,
+  "tdp_w": 55,
+  "tdp_max_w": 160,
+  "boost_ghz": 5.5,
+  "memory_types": [
+   "DDR5"
+  ],
+  "release_year": 2025,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core Ultra 7 270HX",
+  "brand": "Intel",
+  "socket": "LGA1851",
+  "cores": 20,
+  "threads": null,
+  "tdp_w": 55,
+  "tdp_max_w": 160,
+  "boost_ghz": 5.3,
+  "memory_types": [
+   "DDR5"
+  ],
+  "release_year": 2025,
+  "source": "wikipedia"
+ },
+ {
   "name": "Intel Core Ultra 9 285K",
   "brand": "Intel",
   "socket": "LGA1851",
@@ -300,6 +330,111 @@
   "source": "wikipedia",
   "passmark_cpu_mark": 959,
   "passmark_price_usd": 287.0
+ },
+ {
+  "name": "Intel Core Ultra 9 285HX",
+  "brand": "Intel",
+  "socket": "LGA1851",
+  "cores": 24,
+  "threads": null,
+  "tdp_w": 55,
+  "tdp_max_w": 160,
+  "boost_ghz": 5.5,
+  "memory_types": [
+   "DDR5"
+  ],
+  "release_year": 2025,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core Ultra 9 275HX",
+  "brand": "Intel",
+  "socket": "LGA1851",
+  "cores": 24,
+  "threads": null,
+  "tdp_w": 55,
+  "tdp_max_w": 160,
+  "boost_ghz": 5.4,
+  "memory_types": [
+   "DDR5"
+  ],
+  "release_year": 2025,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core Ultra 7 265HX",
+  "brand": "Intel",
+  "socket": "LGA1851",
+  "cores": 20,
+  "threads": null,
+  "tdp_w": 55,
+  "tdp_max_w": 160,
+  "boost_ghz": 5.3,
+  "memory_types": [
+   "DDR5"
+  ],
+  "release_year": 2025,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core Ultra 7 255HX",
+  "brand": "Intel",
+  "socket": "LGA1851",
+  "cores": 20,
+  "threads": null,
+  "tdp_w": 55,
+  "tdp_max_w": 160,
+  "boost_ghz": 5.2,
+  "memory_types": [
+   "DDR5"
+  ],
+  "release_year": 2025,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core Ultra 7 251HX",
+  "brand": "Intel",
+  "socket": "LGA1851",
+  "cores": 16,
+  "threads": null,
+  "tdp_w": 55,
+  "tdp_max_w": 160,
+  "boost_ghz": 5.1,
+  "memory_types": [
+   "DDR5"
+  ],
+  "release_year": 2025,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core Ultra 5 245HX",
+  "brand": "Intel",
+  "socket": "LGA1851",
+  "cores": 14,
+  "threads": null,
+  "tdp_w": 55,
+  "tdp_max_w": 160,
+  "boost_ghz": 5.1,
+  "memory_types": [
+   "DDR5"
+  ],
+  "release_year": 2025,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core Ultra 5 235HX",
+  "brand": "Intel",
+  "socket": "LGA1851",
+  "cores": 14,
+  "threads": null,
+  "tdp_w": 55,
+  "tdp_max_w": 160,
+  "boost_ghz": 5.1,
+  "memory_types": [
+   "DDR5"
+  ],
+  "release_year": 2025,
+  "source": "wikipedia"
  },
  {
   "name": "Intel Core Ultra 7 165HL",
@@ -762,6 +897,86 @@
   "source": "wikipedia"
  },
  {
+  "name": "Intel Core i9-14900HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 24,
+  "threads": 32,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": 5.8,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i7-14700HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 20,
+  "threads": 28,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": 5.5,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i7-14650HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 16,
+  "threads": 24,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": 5.2,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i5-14500HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 14,
+  "threads": 20,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": 4.9,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i5-14450HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 10,
+  "threads": 16,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": 4.8,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
   "name": "Intel Core i9-13900KS",
   "brand": "Intel",
   "socket": "LGA1700",
@@ -1058,6 +1273,150 @@
   "tdp_w": 35,
   "tdp_max_w": 69,
   "boost_ghz": 4.2,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i9-13980HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 24,
+  "threads": 32,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": null,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i9-13950HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 24,
+  "threads": 32,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": null,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i9-13900HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 24,
+  "threads": 32,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": null,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i7-13850HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 20,
+  "threads": 28,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": null,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i7-13700HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 16,
+  "threads": 24,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": null,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i7-13650HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 18,
+  "threads": 20,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": null,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i5-13600HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 6,
+  "threads": 12,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": null,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i5-13500HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 6,
+  "threads": 12,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": null,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2023,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i5-13450HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 6,
+  "threads": 12,
+  "tdp_w": 55,
+  "tdp_max_w": 157,
+  "boost_ghz": null,
   "memory_types": [
    "DDR4",
    "DDR5"
@@ -1466,14 +1825,110 @@
   "source": "wikipedia"
  },
  {
-  "name": "Intel Core i9-12900HK",
+  "name": "Intel Core i9-12950HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 16,
+  "threads": 24,
+  "tdp_w": 45,
+  "tdp_max_w": 157,
+  "boost_ghz": 5.0,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2022,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i9-12900HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 16,
+  "threads": 24,
+  "tdp_w": 45,
+  "tdp_max_w": 157,
+  "boost_ghz": 5.0,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2022,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i7-12850HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 16,
+  "threads": 24,
+  "tdp_w": 45,
+  "tdp_max_w": 157,
+  "boost_ghz": 4.8,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2022,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i7-12800HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 16,
+  "threads": 24,
+  "tdp_w": 45,
+  "tdp_max_w": 157,
+  "boost_ghz": 4.8,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2022,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i7-12650HX",
   "brand": "Intel",
   "socket": "LGA1700",
   "cores": 14,
   "threads": 20,
-  "tdp_w": 35,
-  "tdp_max_w": 115,
-  "boost_ghz": 5.0,
+  "tdp_w": 45,
+  "tdp_max_w": 157,
+  "boost_ghz": 4.7,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2022,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i5-12600HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 12,
+  "threads": 16,
+  "tdp_w": 45,
+  "tdp_max_w": 157,
+  "boost_ghz": 4.6,
+  "memory_types": [
+   "DDR4",
+   "DDR5"
+  ],
+  "release_year": 2022,
+  "source": "wikipedia"
+ },
+ {
+  "name": "Intel Core i5-12450HX",
+  "brand": "Intel",
+  "socket": "LGA1700",
+  "cores": 8,
+  "threads": 12,
+  "tdp_w": 45,
+  "tdp_max_w": 157,
+  "boost_ghz": 4.4,
   "memory_types": [
    "DDR4",
    "DDR5"
@@ -1863,21 +2318,6 @@
   "source": "wikipedia"
  },
  {
-  "name": "Intel Core i9-11980HK",
-  "brand": "Intel",
-  "socket": "LGA1200",
-  "cores": 8,
-  "threads": 16,
-  "tdp_w": 45,
-  "tdp_max_w": 65,
-  "boost_ghz": 5.0,
-  "memory_types": [
-   "DDR4"
-  ],
-  "release_year": 2020,
-  "source": "wikipedia"
- },
- {
   "name": "Intel Core i9-10900K",
   "brand": "Intel",
   "socket": "LGA1200",
@@ -2175,36 +2615,6 @@
    "DDR4"
   ],
   "release_year": 2020,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i7-10510Y",
-  "brand": "Intel",
-  "socket": "LGA1200",
-  "cores": 4,
-  "threads": null,
-  "tdp_w": null,
-  "tdp_max_w": null,
-  "boost_ghz": 4.5,
-  "memory_types": [
-   "DDR4"
-  ],
-  "release_year": 2019,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i3-10110Y",
-  "brand": "Intel",
-  "socket": "LGA1200",
-  "cores": 2,
-  "threads": null,
-  "tdp_w": null,
-  "tdp_max_w": null,
-  "boost_ghz": 4.0,
-  "memory_types": [
-   "DDR4"
-  ],
-  "release_year": 2019,
   "source": "wikipedia"
  },
  {
@@ -2656,45 +3066,6 @@
   "source": "wikipedia"
  },
  {
-  "name": "Intel Core i7-8500Y",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 2,
-  "threads": null,
-  "tdp_w": null,
-  "tdp_max_w": null,
-  "boost_ghz": 4.2,
-  "memory_types": [],
-  "release_year": 2019,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i5-8310Y",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 2,
-  "threads": null,
-  "tdp_w": null,
-  "tdp_max_w": null,
-  "boost_ghz": 3.9,
-  "memory_types": [],
-  "release_year": 2019,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i5-8210Y",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 2,
-  "threads": null,
-  "tdp_w": null,
-  "tdp_max_w": null,
-  "boost_ghz": 3.6,
-  "memory_types": [],
-  "release_year": 2019,
-  "source": "wikipedia"
- },
- {
   "name": "Intel Core i9-9900K",
   "brand": "Intel",
   "socket": "LGA1151",
@@ -2796,84 +3167,6 @@
   "memory_types": [
    "DDR4"
   ],
-  "release_year": 2018,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i9-8950HK",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 6,
-  "threads": null,
-  "tdp_w": 45,
-  "tdp_max_w": null,
-  "boost_ghz": 4.8,
-  "memory_types": [],
-  "release_year": 2018,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i7-8700B",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 6,
-  "threads": null,
-  "tdp_w": 65,
-  "tdp_max_w": null,
-  "boost_ghz": 4.6,
-  "memory_types": [],
-  "release_year": 2018,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i5-8500B",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 6,
-  "threads": null,
-  "tdp_w": 65,
-  "tdp_max_w": null,
-  "boost_ghz": 4.1,
-  "memory_types": [],
-  "release_year": 2018,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i5-8400B",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 6,
-  "threads": null,
-  "tdp_w": 65,
-  "tdp_max_w": null,
-  "boost_ghz": 4.0,
-  "memory_types": [],
-  "release_year": 2018,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i5-8200Y",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 2,
-  "threads": null,
-  "tdp_w": null,
-  "tdp_max_w": null,
-  "boost_ghz": 3.9,
-  "memory_types": [],
-  "release_year": 2018,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i3-8100B",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 4,
-  "threads": null,
-  "tdp_w": 65,
-  "tdp_max_w": null,
-  "boost_ghz": 3.6,
-  "memory_types": [],
   "release_year": 2018,
   "source": "wikipedia"
  },
@@ -3351,84 +3644,6 @@
   "memory_types": [
    "DDR4"
   ],
-  "release_year": 2017,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i7-7920HQ",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 4,
-  "threads": null,
-  "tdp_w": 45,
-  "tdp_max_w": null,
-  "boost_ghz": 4.1,
-  "memory_types": [],
-  "release_year": 2017,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i7-7820HQ",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 4,
-  "threads": null,
-  "tdp_w": 45,
-  "tdp_max_w": null,
-  "boost_ghz": 3.9,
-  "memory_types": [],
-  "release_year": 2017,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i7-7820HK",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 4,
-  "threads": null,
-  "tdp_w": 45,
-  "tdp_max_w": null,
-  "boost_ghz": 3.9,
-  "memory_types": [],
-  "release_year": 2017,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i7-7700HQ",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 4,
-  "threads": null,
-  "tdp_w": 45,
-  "tdp_max_w": null,
-  "boost_ghz": 3.8,
-  "memory_types": [],
-  "release_year": 2017,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i5-7440HQ",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 4,
-  "threads": null,
-  "tdp_w": 45,
-  "tdp_max_w": null,
-  "boost_ghz": 3.8,
-  "memory_types": [],
-  "release_year": 2017,
-  "source": "wikipedia"
- },
- {
-  "name": "Intel Core i5-7300HQ",
-  "brand": "Intel",
-  "socket": null,
-  "cores": 4,
-  "threads": null,
-  "tdp_w": 45,
-  "tdp_max_w": null,
-  "boost_ghz": 3.5,
-  "memory_types": [],
   "release_year": 2017,
   "source": "wikipedia"
  }

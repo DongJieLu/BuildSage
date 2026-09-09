@@ -53,6 +53,21 @@ def fail(code: int, msg: str, status: int = 200) -> JSONResponse:
     return _resp(code, None, msg, status)
 
 
+def _jsonable(obj):
+    """把 Decimal / datetime 等 MySQL 返回值转成 JSON 可序列化类型。"""
+    from decimal import Decimal
+
+    if isinstance(obj, dict):
+        return {k: _jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_jsonable(v) for v in obj]
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat(sep=" ", timespec="seconds")
+    return obj
+
+
 def _validate(req: ChatRequest) -> str | None:
     question = (req.question or "").strip()
     if not question:
@@ -98,14 +113,31 @@ def chat_stream(req: ChatRequest, session=Depends(get_session_store)):
 
     def gen():
         answer_text = ""
+        intent = strategy = ""
+        latency_ms = 0
+        cache_hit = False
+        rejected = False
         try:
             history = session.get_history(req.session_id) if req.session_id else []
             for event in answer_stream(req.question, category=req.category, session_id=req.session_id, history=history):
-                if event.get("type") == "token":
-                    answer_text = answer_text + event.get("content", "")
+                etype = event.get("type")
+                if etype == "token":
+                    answer_text += event.get("content", "")
+                elif etype == "route":
+                    intent = event.get("intent", "")
+                    strategy = event.get("strategy", "")
+                elif etype == "done":
+                    latency_ms = event.get("latency_ms", 0)
+                    cache_hit = bool(event.get("cache_hit"))
+                    rejected = bool(event.get("rejected"))
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
             if req.session_id:
                 session.append(req.session_id, req.question, answer_text)
+            _record_log(req, {
+                "intent": intent, "strategy": strategy, "answer": answer_text,
+                "latency_ms": latency_ms, "cache_hit": cache_hit, "rejected": rejected,
+                "evidence_ids": [],
+            })
         except Exception as exc:  # noqa: BLE001
             logger.exception("stream 接口异常")
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
@@ -200,7 +232,7 @@ def specs(category: str, q: str = "", limit: int = 50):
         from app.api.deps import get_spec_repository
 
         rows = get_spec_repository().search(category, q, limit=limit) if q else get_spec_repository().search_all(category, limit=limit)
-        return ok({"items": rows, "count": len(rows)})
+        return ok({"items": _jsonable(rows), "count": len(rows)})
     except Exception as exc:  # noqa: BLE001
         logger.exception("specs 接口异常")
         return fail(3001, f"服务内部错误: {exc}", 500)

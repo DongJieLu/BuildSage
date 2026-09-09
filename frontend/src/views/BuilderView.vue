@@ -121,10 +121,11 @@ async function check() {
     const lines = (data.answer || '').split('\n').map((l) => l.trim()).filter(Boolean)
     const checks = []
     let conclusion = ''
+    const icons = Object.keys(CHECK_ICONS)
     for (const line of lines) {
-      const icon = line.slice(0, 2)
-      if (CHECK_ICONS[icon]) {
-        const body = line.slice(2).trim()
+      const icon = icons.find((i) => line.startsWith(i))
+      if (icon) {
+        const body = line.slice(icon.length).trim()
         const rm = body.match(/^(R[1-5])\s+(.*)$/)
         checks.push({ icon, status: CHECK_ICONS[icon], rule: rm ? rm[1] : '', text: rm ? rm[2] : body })
       } else if (line.startsWith('**结论')) {
