@@ -1,6 +1,6 @@
 # EVALUATION.md
 
-评测运行时间：2026-09-09 13:24:01
+评测运行时间：2026-09-09 13:46:57
 
 ## 复现命令
 
@@ -34,21 +34,25 @@ python scripts/evaluate.py --eval-set data/eval/eval_set.jsonl --output EVALUATI
 
 ### Recall@5（rag：引用文档命中应出文档）
 
-- **92.59%**（25/27）
+- **100.00%**（27/27）
 
 ### RAGAS（rag 类子集，DeepSeek 评委）
 
-- faithfulness: **0.9191**
-- answer_relevancy: **0.9199**
-- context_utilization: **0.65**
+- faithfulness: **0.8203**
+- answer_relevancy: **0.9352**
+- context_utilization: **0.663**
 
 ### 延迟（ms，p50 / p95，含 LLM 调用）
 
 | 通道 | p50 | p95 |
 |---|---|---|
-| param | 1032 | 2216 |
-| compat | 951 | 1377 |
-| rag | 27647 | 39413 |
-| reject | 775 | 1019 |
+| param | 1079 | 2159 |
+| compat | 1159 | 1714 |
+| rag | 11963 | 15977 |
+| reject | 893 | 1076 |
 
-本报告评估耗时 882s。
+> rag 通道为非流式端到端（含完整生成）。前端使用 SSE 流式，实测 CPU 环境首字延迟约 9~13s
+> （检索+重排 5~8s，其余为生成首 token）；瓶颈在 CPU 上的 bge-reranker 逐对打分，
+> 优化方向见 INTERVIEW.md 第 6/10 条（GPU、更小 reranker、重排结果缓存）。
+
+本报告评估耗时 443s。
