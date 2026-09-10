@@ -28,7 +28,10 @@ from app.rag.pipeline import answer
 from app.rag.retriever import retrieve
 from app.rag.router import rule_route
 
-TYPE_TO_INTENT = {"param": "param", "compat": "compat", "rag": "rag", "reject": "reject"}
+# 新架构（统一 RAG）下的分流预期：param/rag 题都应进入 RAG 正常回答，reject 题应被拒答。
+# compat 题的精确判定在配置器入口（规则引擎），走固定前缀单独评估，不计入分流。
+TYPE_TO_INTENT = {"param": "rag", "rag": "rag", "reject": "reject"}
+BUILDER_PREFIX = "帮我检查这套配置是否兼容："
 
 
 def load_eval_set(path: str) -> list[dict]:
@@ -100,23 +103,30 @@ def evaluate(items: list[dict]) -> dict:
         question = item["question"]
         expected = item["expected"]
         t0 = time.perf_counter()
-        result = answer(question)
+        if qtype == "compat":
+            # 配置检查的精确判定在配置器入口（规则引擎），加固定前缀走该链路
+            result = answer(BUILDER_PREFIX + question)
+        else:
+            result = answer(question)
         latency = (time.perf_counter() - t0) * 1000
 
-        # 路由分流
-        metrics["routing"]["total"] += 1
-        ok = result["intent"] == TYPE_TO_INTENT[qtype]
-        if ok:
-            metrics["routing"]["correct"] += 1
-        bt = metrics["routing"]["by_type"].setdefault(qtype, [0, 0])  # [correct, total]
-        bt[1] += 1
-        if ok:
-            bt[0] += 1
+        # 分流：param/rag 题应进入 RAG 正常回答，reject 题应被拒答（compat 不计入）
+        ok = None
+        if qtype != "compat":
+            metrics["routing"]["total"] += 1
+            ok = result["intent"] == TYPE_TO_INTENT[qtype]
+            if ok:
+                metrics["routing"]["correct"] += 1
+            bt = metrics["routing"]["by_type"].setdefault(qtype, [0, 0])  # [correct, total]
+            bt[1] += 1
+            if ok:
+                bt[0] += 1
 
         # 通道指标（即使路由错也按实际结果评估该通道的表现）
         if qtype == "param":
             metrics["param"]["total"] += 1
-            if result["intent"] == "param" and value_in_answer(expected["value"], result["answer"]):
+            # param 题现在经 RAG 检索规格知识文档回答，考察回答里的参数值是否正确
+            if value_in_answer(expected["value"], result["answer"]):
                 metrics["param"]["value_correct"] += 1
         elif qtype == "compat":
             metrics["compat"]["total"] += 1
@@ -141,10 +151,10 @@ def evaluate(items: list[dict]) -> dict:
                 if result["intent"] == "rag" and answer_keys_hit(result["answer"], keys):
                     metrics["rag_answer"]["hit"] += 1
             rag_samples.append((question, result["answer"], [c.get("text", "") for c in result.get("citations", [])]))
-        if result["intent"] in metrics["latency"]:
-            metrics["latency"][result["intent"]].append(result["latency_ms"])
+        if qtype in metrics["latency"]:
+            metrics["latency"][qtype].append(result["latency_ms"])
         print(f"[{i:3d}/{len(items)}] {qtype:7s} intent={result['intent']:7s} "
-              f"{'OK ' if ok else 'MISS'} {latency:6.0f}ms  {question[:38]}")
+              f"{'OK ' if ok else ('SKIP' if ok is None else 'MISS')} {latency:6.0f}ms  {question[:38]}")
     return {"metrics": metrics, "rag_samples": rag_samples}
 
 
@@ -213,12 +223,12 @@ def write_report(path: str, metrics: dict, ragas: dict | None, n_items: int, dur
         "## 金标集",
         "",
         f"{n_items} 条（param 36 / compat 32 / rag 27 / reject 8，seed=42）。"
-        "真值来源：param = 规格库字段值；compat = 规则引擎 R1~R5 对同套配置的判定（正例与冲突例）；"
+        "真值来源：param = 规格库字段值；compat = 规则引擎 R1~R9 对同套配置的判定（正例与冲突例）；"
         "rag = 攻略文档标注；reject = 寒暄/无关。",
         "",
         "## 指标结果",
         "",
-        "### 路由分流正确率",
+        "### 应答分流正确率（param/rag 题进入 RAG 回答，reject 题被拒答）",
         "",
         f"- 总体：**{pct(r['correct'], r['total'])}**（{r['correct']}/{r['total']}）",
     ]
@@ -226,11 +236,11 @@ def write_report(path: str, metrics: dict, ragas: dict | None, n_items: int, dur
         lines.append(f"- {t}: {ok}/{total}（{pct(ok, total)}）")
     lines += [
         "",
-        "### 参数直查准确率（param：回答包含规格库真值）",
+        "### 参数问题回答准确率（param：经 RAG 检索规格知识文档后，回答包含规格库真值）",
         "",
         f"- **{pct(p['value_correct'], p['total'])}**（{p['value_correct']}/{p['total']}）",
         "",
-        "### 兼容校验判定准确率（compat：verdict 与规则引擎金标一致）",
+        "### 兼容校验判定准确率（compat：配置器规则引擎入口，verdict 与金标一致）",
         "",
         f"- verdict 准确率：**{pct(c['verdict_correct'], c['total'])}**（{c['verdict_correct']}/{c['total']}）",
         f"- 冲突规则集命中率：**{pct(c['rule_correct'], c['total'])}**（{c['rule_correct']}/{c['total']}）",
