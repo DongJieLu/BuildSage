@@ -152,7 +152,6 @@ DDL_STATEMENTS = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 ]
 
-
 def main() -> None:
     engine = get_engine()
     with engine.begin() as conn:

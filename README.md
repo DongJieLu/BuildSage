@@ -1,27 +1,21 @@
 # 装机参谋 BuildSage
 
-一个面向 DIY 装机的问答系统：**参数直查 + 装机兼容性校验 + 选购攻略问答**。
+一个面向 DIY 装机知识的 **纯 RAG 智能问答系统**。
 后端 FastAPI + LangChain/LangGraph，前端 Vue 3，规格数据从公开规格页抽取，攻略文档自写。
 
 ![对话问答](docs/screenshots/01_chat.png)
 
 ## 为什么做这个
 
-装机场景里的问题其实分三类，性质完全不同：
-
-- **参数类**（"RTX 4070 的 TDP 是多少"）——答案唯一，是查表题，用向量检索去猜没道理；
-- **兼容类**（"i9-14900K 配 650W 电源够吗"）——是几个硬约束的联合判断，交给 LLM 自由发挥就是主动引入幻觉；
-- **选购类**（"5000 元怎么配"）——开放问题，才需要检索 + 生成。
-
-所以这个项目没有做"一个大 RAG 包打天下"，而是把三类问题分流到三条链路：参数查 MySQL，兼容走规则引擎，选购走混合检索 + 重排 + 生成。这也是它和一般 RAG Demo 最大的区别。
+硬件参数、选购建议和装机知识统一作为知识库内容参与检索。系统经过相关性判断后，统一进入“策略选择 → 多 query 检索 → 重排 → 生成”的 RAG 链路；无关问题在入口拒答。
 
 ## 效果
 
-**对话页**——每条回答带路由徽章，一眼能看出走了哪条通道：参数直查秒回参数卡片，兼容校验出逐条核验单并引用规则编号，深度问答流式输出带引用溯源。
+**对话页**——每条回答都经过统一 RAG 链路，流式输出答案并展示引用溯源。
 
 ![装机配置器](docs/screenshots/02_builder.png)
 
-装机配置器是不打字也能用的入口：下拉选件 → 点校验 → 出核验单。这条链路完全不经过 LLM，纯规则引擎。
+装机配置器是不打字也能用的独立工具：下拉选件 → 点校验 → 出核验单，不影响聊天页的 RAG 主链路。
 
 ![规格库](docs/screenshots/03_specs.png)
 
@@ -38,16 +32,14 @@
    │
    ├─ Redis 答案缓存命中 ──────────────── 直接返回
    │
-   ├─ router_node（L1 规则词 + L2 LLM 结构化分类）
-   │     ├─ param   → 槽位抽取 → 参数化 SQL 查规格库 → 参数卡片
-   │     ├─ compat  → 配置清单抽取 → 规则引擎 R1~R5 → 核验单
-   │     ├─ rag     → 混合检索（BM25 + 向量 RRF）→ bge-reranker 精排 → LCEL 生成
+   ├─ router_node（规则 + LLM 相关性判断）
+   │     ├─ rag     → 策略选择 → 多 query 混合检索 → 重排 → 生成
    │     └─ reject  → 拒答模板
    │
    └─ 写回缓存 + qa_log 落库
 ```
 
-用 LangGraph 编排的是**确定性管道**（每个节点单一职责、无循环），不是自主 Agent 循环——参数和兼容是确定性问题，不需要 LLM 自己决定调什么工具。
+用 LangGraph 编排的是**确定性 RAG 管道**（每个节点单一职责、无循环），策略引擎只负责选择检索方式，不开放工具调用，便于控制延迟和幻觉。
 
 **兼容规则**（`app/specs/rules.py`，纯 Python 可单测）：
 
@@ -97,7 +89,7 @@ python scripts/extract_specs.py      # 可选，产物已随仓库提供
 python scripts/load_specs.py
 
 # 攻略语料入库（首次会下载 BGE-M3 权重）
-python scripts/ingest_guides.py --rebuild
+python scripts/ingest_guides.py --rebuild  # 攻略 + 硬件规格统一入库 RAG
 
 # 启动
 uvicorn app.api.main:app --host 127.0.0.1 --port 8000
@@ -108,18 +100,17 @@ cd frontend && npm install && npm run dev
 
 ## 评估
 
-金标集是脚本自动生成的（`scripts/gen_eval_set.py --seed 42`），103 条，可复现。参数类的真值直接来自规格库字段，兼容类的真值来自规则引擎判定——同一份结构化数据既产题又产答案，不需要人工标注。
+金标集由 `scripts/gen_eval_set.py --seed 42` 生成并固定随机种子，可复现。RAG 题目标注应命中文档和回答关键点，分别统计路由、检索、回答质量、拒答与配置器兼容性指标。
 
 | 指标 | 结果 |
 |---|---|
 | 路由分流正确率 | 100%（103/103） |
-| 参数直查准确率 | 94.44%（34/36） |
-| 兼容判定准确率 | 96.88%，冲突规则命中 100% |
-| Recall@5 | 100%（27/27） |
+| RAG 回答关键点准确率 | 由 `scripts/evaluate.py` 按金标 `answer_keys` 统计 |
+| Recall@5 | 由 `scripts/evaluate.py` 按引用文档统计 |
 | RAGAS | faithfulness 0.82 / answer relevancy 0.94 / context utilization 0.66 |
-| 延迟 p50 | param 1.1s · compat 1.2s · rag 12s |
+| 延迟 p50 | RAG 受本地 embedding / reranker 影响 |
 
-完整报告见 [EVALUATION.md](EVALUATION.md)，复现命令在里面。rag 的 12s 是 CPU 上重排的串行开销，流式首字延迟约 9~13s，优化方向写在 [INTERVIEW.md](INTERVIEW.md) 里。
+完整报告见 [EVALUATION.md](EVALUATION.md)，复现命令在里面。RAG 延迟主要来自 CPU 上的 embedding 与重排，优化方向写在 [INTERVIEW.md](INTERVIEW.md) 里。
 
 ```bash
 python -m pytest tests/ -q      # 52 项单测
@@ -135,14 +126,14 @@ app/
   ingest/        LangChain 入库管线（loaders → splitters → 向量化）
   llm/           ChatOpenAI 封装（DeepSeek）
   observability/ Langfuse 追踪
-  rag/           路由 / 检索 / 重排 / 生成 / 缓存 / 会话 / LangGraph 管道
+  rag/           路由 / 策略 / 检索 / 重排 / 生成 / 缓存 / 会话 / LangGraph 管道
   rerank/        bge-reranker 适配器
   specs/         规格库仓储 / 槽位抽取 / 兼容规则引擎
 frontend/        Vue 3 前端（对话 / 配置器 / 规格库 / 看板）
 scripts/         抽取 / 建库 / 导库 / 入库 / 评估
 tests/           单元测试
 data/
-  specs/         规格数据（JSON，入库源）
+  specs/         规格数据（JSON，MySQL 配置器与 RAG 文档入库源）
   docs/          选购攻略（自写）
   eval/          金标集
   SOURCES.md     数据来源与许可

@@ -49,7 +49,15 @@ def main() -> None:
             print(f"{f.name:42s} doc_id={r['doc_id']:3d} chunks={r['chunk_count']}")
         except Exception as exc:  # noqa: BLE001
             print(f"{f.name:42s} FAILED: {exc}")
-    print(f"共入库 {len(md_files)} 篇 / {total_chunks} chunks")
+    from ingest_specs_rag import ingest_specs
+
+    try:
+        result = ingest_specs()
+        total_chunks += result["chunk_count"]
+        print(f"{'15_硬件规格知识库.md':42s} doc_id={result['doc_id']:3d} chunks={result['chunk_count']}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"{'15_硬件规格知识库.md':42s} FAILED: {exc}")
+    print(f"共入库 {len(md_files) + 1} 篇 / {total_chunks} chunks")
 
 
 if __name__ == "__main__":

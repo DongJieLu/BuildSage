@@ -1,16 +1,11 @@
-"""查询路由（LangChain 版）：L1 规则词 + L2 LLM 结构化分类 → param | compat | rag | reject。
+"""查询路由：相关性判断 → rag | reject。
 
-EduRAG 三层路由（规则/FAQ语义/LLM 分类）演进为四通道：
-- param：参数直查（型号 + 参数字段，查规格库）
-- compat：兼容性校验（配置清单或多件对比）
-- rag：选购攻略深度问答
-- reject：寒暄/无关
-L1 规则零成本拦截高频模式，其余走 with_structured_output 的 LLM 分类。
+配置器复用 /chat 接口时，通过固定前缀进入 compat；普通聊天统一进入 RAG。
 """
 from __future__ import annotations
 
 import logging
-import re
+from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
@@ -18,103 +13,142 @@ from app.llm.models import get_chat_model
 
 logger = logging.getLogger(__name__)
 
-# L1 规则词：确定性强的模式直接分流，不花 LLM 调用
 CHITCHAT_WORDS = ("你好", "您好", "谢谢", "再见", "在吗", "嗨", "hello", "hi")
-# 型号 + 参数字段模式：如 "4070 的 tdp"、"14900K 功耗多少"
-_MODEL_RE = re.compile(
-    r"\b(?:rtx|gtx)\s?\d{3,4}\w*|(?:radeon\s+)?rx\s?\d{3,4}\w*|i[3579]-\d{4,5}\w*"
-    r"|(?:ryzen\s?\d\s?\d{4}\w*)|ultra\s?\d\s?\d{3}\w*"
-    r"|\b[abhzxy]?\d{3}[a-z]?\b(?:\s?(?:motherboard|主板|芯片组|tomahawk|gaming|aorus|tuf|plus|max))?",
-    re.I,
-)
-_PARAM_WORDS = (
-    "tdp", "功耗", "参数", "多少瓦", "瓦数", "显存", "核心数", "线程", "频率",
-    "插槽", "socket", "接口", "规格", "多大内存", "长度", "vram", "价格",
-)
-_COMPAT_WORDS = (
-    "兼容", "能不能配", "能不能用", "带得动", "能装吗", "冲突", "匹配吗",
-    "能插", "行不行", "合适吗", "搭不搭", "装得上", "够吗", "够不够",
-    "能用", "可以用", "支持吗", "装吗", "上得了", "吃得住", "支持",
-)
-# 兼容判断必须有"具体硬件指称"（型号/瓦数/芯片组）才走 L1；
-# 否则「装机最容易翻车的兼容性问题」这类攻略问题会被误判为 compat。
-_CONCRETE_RE = re.compile(
-    r"(?:rtx|gtx|rx)\s?\d{3,4}\w*|i[3579]-\d{4,5}\w*|ryzen\s?\d\s?\d{4}\w*|ultra\s?\d\s?\d{3}\w*"
-    r"|\d{3,4}\s?w\b|\b[abhzx]\d{3}[a-z]{0,2}\b",
-    re.I,
+
+CLASSIFY_PROMPT = (
+    "你是 DIY 装机知识库的查询分类器，只输出 JSON："
+    '{"intent":"rag|reject","confidence":0.0,"reason":"..."}。\n'
+    "rag：需要检索装机攻略后综合回答的问题；"
+    "reject：寒暄、闲聊或与 DIY 装机无关的问题。"
 )
 
 
 class RouteDecision(BaseModel):
-    """with_structured_output 的目标 schema。"""
-
-    intent: str = Field(description="param | compat | rag | reject")
+    intent: str = Field(description="rag | reject")
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
-    reason: str = Field(default="")
+    reason: str = ""
 
 
-ROUTE_SYSTEM_PROMPT = (
-    "你是装机问答的路由分类器。将用户问题分为四类，只依据问题本身判断：\n"
-    "- param：询问具体硬件型号的某个参数数值（如「RTX 4070 的 TDP 是多少」「i9-14900K 用什么插槽」）\n"
-    "- compat：判断多个配件之间能否搭配/兼容，或配置清单的功耗/尺寸核算（如「i9-14900K 配 650W 电源够吗」「B650 主板能用 DDR4 吗」）\n"
-    "- rag：装机选购建议、科普、攻略类开放问题（如「5000 预算怎么配」「DDR4 和 DDR5 怎么选」）\n"
-    "- reject：寒暄闲聊或与装机完全无关的问题"
-)
+def _extract_json(content: str) -> dict | None:
+    import json
 
-VALID_INTENTS = ("param", "compat", "rag", "reject")
+    text = str(getattr(content, "content", content) or "").strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        data = json.loads(text[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
 
 
-def rule_route(question: str) -> RouteDecision | None:
-    """L1 规则：零成本拦截确定模式。"""
-    q = (question or "").strip()
-    if not q:
-        return RouteDecision(intent="reject", confidence=1.0, reason="空问题")
-    if len(q) <= 20 and any(w in q.lower() for w in CHITCHAT_WORDS):
-        return RouteDecision(intent="reject", confidence=0.95, reason="寒暄/闲聊")
-    q_lower = q.lower()
-    has_model = bool(_MODEL_RE.search(q))
-    if has_model and any(w in q_lower for w in _PARAM_WORDS):
-        # 型号+参数词 → param；但若同时出现兼容词（"4070 配 650W 电源够吗"）→ compat
-        if any(w in q for w in _COMPAT_WORDS):
-            return RouteDecision(intent="compat", confidence=0.9, reason="型号+兼容词命中")
-        return RouteDecision(intent="param", confidence=0.92, reason="型号+参数词命中")
-    if any(w in q for w in _COMPAT_WORDS) and _CONCRETE_RE.search(q):
-        return RouteDecision(intent="compat", confidence=0.85, reason="具体硬件+兼容词命中")
-    return None
+def _to_float(value, default: float = 0.5) -> float:
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return default
 
 
 class Router:
     def __init__(self, llm=None) -> None:
         self._llm = llm
 
-    def _classify(self, question: str) -> RouteDecision:
+    @staticmethod
+    def _rule_route(question: str) -> dict | None:
+        q = (question or "").strip()
+        if len(q) <= 20 and any(word in q.lower() for word in CHITCHAT_WORDS):
+            return {"intent": "reject", "confidence": 0.95, "reason": "寒暄/闲聊"}
+        # 配置器仍复用 /chat 接口，保留这一条 UI 工具入口；普通聊天不走该分支。
+        if q.startswith("帮我检查这套配置是否兼容："):
+            return {"intent": "compat", "confidence": 1.0, "reason": "配置器兼容校验入口"}
+        return None
+
+    def _classify(self, question: str) -> dict:
         try:
             llm = self._llm or get_chat_model()
-            structured = llm.with_structured_output(RouteDecision, method="function_calling")
-            decision = structured.invoke(
-                [{"role": "system", "content": ROUTE_SYSTEM_PROMPT}, {"role": "user", "content": question}]
-            )
-            if isinstance(decision, RouteDecision) and decision.intent in VALID_INTENTS:
-                return decision
-            return RouteDecision(intent="rag", confidence=0.5, reason="结构化输出异常回退 rag")
+            messages = [("system", CLASSIFY_PROMPT), ("user", question)]
+            data = None
+            if hasattr(llm, "with_structured_output"):
+                decision = llm.with_structured_output(
+                    RouteDecision, method="function_calling"
+                ).invoke(messages)
+                if isinstance(decision, RouteDecision):
+                    data = decision.model_dump()
+                elif isinstance(decision, dict):
+                    data = decision
+            if data is None:
+                data = _extract_json(llm.invoke(messages))
+            if data and data.get("intent") in ("rag", "reject"):
+                return {
+                    "intent": data["intent"],
+                    "confidence": _to_float(data.get("confidence")),
+                    "reason": data.get("reason") or "",
+                }
         except Exception as exc:  # noqa: BLE001
             logger.warning("LLM 路由分类失败，默认 rag: %s", exc)
-            return RouteDecision(intent="rag", confidence=0.5, reason=f"LLM 分类失败默认 rag: {exc}")
+        return {"intent": "rag", "confidence": 0.5, "reason": "LLM 分类失败，默认 rag"}
 
-    def route(self, question: str, history: list | None = None) -> dict:
-        """返回 {intent, confidence, reason, route_detail}。"""
+    def route(self, question: str, category: str | None = None) -> dict:
         detail: dict = {"l1": None, "l2": None}
-        l1 = rule_route(question)
-        if l1 is not None:
-            detail["l1"] = {"hit": True, "intent": l1.intent, "reason": l1.reason}
-            return {"intent": l1.intent, "confidence": l1.confidence, "reason": l1.reason, "route_detail": detail}
-        decision = self._classify(question)
-        if decision.intent not in VALID_INTENTS:
-            decision = RouteDecision(intent="rag", confidence=0.5, reason=f"非法 intent 回退 rag: {decision.intent}")
-        detail["l2"] = {"intent": decision.intent, "confidence": decision.confidence, "reason": decision.reason}
+        if not (question or "").strip():
+            detail["l1"] = {"hit": True, "intent": "reject", "reason": "空问题"}
+            return {"intent": "reject", "confidence": 1.0, "reason": "空问题", "route_detail": detail}
+
+        l1 = self._rule_route(question)
+        if l1:
+            detail["l1"] = {"hit": True, **l1}
+            return {**l1, "route_detail": detail}
+
+        l3 = self._classify(question)
+        detail["l2"] = l3
+        if l3["intent"] == "reject":
+            return {
+                "intent": "reject",
+                "confidence": l3["confidence"],
+                "reason": "LLM 判定与装机知识库无关",
+                "route_detail": detail,
+            }
         return {
-            "intent": decision.intent,
-            "confidence": decision.confidence,
-            "reason": decision.reason,
+            "intent": "rag",
+            "confidence": l3["confidence"],
+            "reason": "进入统一 RAG 检索生成",
             "route_detail": detail,
         }
+
+
+def rule_route(question: str) -> dict | None:
+    """兼容旧版测试/调用方；真实问答请使用 Router.route。"""
+    decision = Router._rule_route(question)
+    if decision is None:
+        import re
+
+        q = (question or "").strip()
+        if not q:
+            return _RuleDecision("reject", 1.0, "空问题")
+        model = re.search(
+            r"(?:rtx|gtx|rx)\s?\d{3,4}\w*|i[3579]-\d{4,5}\w*|ryzen\s?\d\s?\d{4}\w*",
+            q,
+            re.I,
+        )
+        if model and any(word in q.lower() for word in ("tdp", "功耗", "显存", "核心", "线程", "频率", "vram")):
+            return _RuleDecision("param", 0.9, "兼容旧版参数规则")
+        if model and any(word in q for word in ("兼容", "带得动", "配", "能用", "支持", "够吗")):
+            return _RuleDecision("compat", 0.85, "兼容旧版兼容性规则")
+        if re.search(r"\b[abhzx]\d{3}[a-z]{0,2}\b", q, re.I) and any(
+            word in q for word in ("兼容", "能用", "支持")
+        ):
+            return _RuleDecision("compat", 0.85, "兼容旧版兼容性规则")
+        return None
+    if decision["intent"] == "compat":
+        return _RuleDecision(**decision)
+    return _RuleDecision(**decision)
+
+
+@dataclass
+class _RuleDecision:
+    """兼容旧测试的轻量 L1 决策对象。"""
+
+    intent: str
+    confidence: float
+    reason: str

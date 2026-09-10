@@ -1,4 +1,4 @@
-"""BuildSage FastAPI 服务：四通道问答（REST + SSE）+ 规格库 + 入库 + 统计。
+"""BuildSage FastAPI 服务：RAG 问答（REST + SSE）+ 配置器 + 入库 + 统计。
 
 统一响应包 {"code":0,"data":{...},"msg":"ok"}；
 错误码：1001 参数错 / 2001 无证据 / 3001 服务内部错 / 4001 文档入库失败。

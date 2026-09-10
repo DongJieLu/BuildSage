@@ -1,13 +1,6 @@
-"""LangGraph 管道：BuildSage 四通道编排（确定性管道，非自主循环）。
+"""LangGraph 管道：策略化 RAG + 拒答。
 
-router_node（L1 规则 + L2 LLM 分类）→ param / compat / rag / reject 四个并行出口之一
-→ 共享出口（缓存写入 + qa_log 落库）。
-
-设计要点（面试叙事）：
-- 这是"确定性管道"：每个节点单一职责、无循环、无 LLM 自主决策工具调用；
-  参数与兼容性是规则可枚举的确定性问题，交给 Agent 循环只会引入幻觉与延迟
-  （与另一个 LangGraph 自主 Agent 项目形成"同一框架两种用法"的对比）。
-- state 用 TypedDict，LangGraph 的 Reducer 语义保证节点只更新自己负责的键。
+普通聊天统一进入 RAG；规格库节点只保留给配置器入口和旧调用方。
 """
 from __future__ import annotations
 
@@ -21,13 +14,15 @@ from app.rag.cache import AnswerCache
 from app.rag.generator import REJECT_ANSWER, Generator
 from app.rag.retriever import retrieve
 from app.rag.router import Router
+from app.rag.strategy import StrategyEngine
 from app.specs.extractor import extract_config, extract_slots
 from app.specs.repository import SpecRepository
 from app.specs.rules import check_compat, verdict
 
 logger = logging.getLogger(__name__)
 
-MIN_EVIDENCE_COUNT = 1   # 检索文档数低于此值视为无证据，拒答
+MIN_EVIDENCE_COUNT = 1
+TOP_K_RECALL = 12
 
 # 展示字段的中文名（param 通道卡片用）
 FIELD_LABELS = {
@@ -61,11 +56,13 @@ def build_graph(
     generator: Generator | None = None,
     spec_repo: SpecRepository | None = None,
     cache: AnswerCache | None = None,
+    strategy_engine: StrategyEngine | None = None,
 ):
     router = router or Router()
     generator = generator or Generator()
     spec_repo = spec_repo or SpecRepository()
     cache = cache or AnswerCache()
+    strategy_engine = strategy_engine or StrategyEngine()
 
     # --- 节点 ---
 
@@ -76,7 +73,7 @@ def build_graph(
         return {}
 
     def router_node(state: PipelineState) -> dict:
-        route = router.route(state["question"], state.get("history"))
+        route = router.route(state["question"], state.get("category"))
         return {"route": route}
 
     def param_node(state: PipelineState) -> dict:
@@ -152,15 +149,29 @@ def build_graph(
                        evidence_ids=[r.rule_id for r in results])
 
     def rag_node(state: PipelineState) -> dict:
-        events = [{"type": "progress", "stage": "retrieval", "detail": "混合检索 + 重排"}]
-        docs = retrieve(state["question"], category=state.get("category"), top_k=5)
+        plan = strategy_engine.plan(state["question"], state.get("history"))
+        events = [
+            {"type": "progress", "stage": "strategy", "detail": plan.strategy},
+            {"type": "progress", "stage": "retrieval", "detail": "多 query 混合检索 + 重排"},
+        ]
+        docs = _retrieve_for_plan(plan.queries, state.get("category"))
         if len(docs) < MIN_EVIDENCE_COUNT:
             return _result(state, answer=REJECT_ANSWER, intent="rag", strategy="no-evidence",
                            events=events, rejected=True)
         gen = generator.generate(state["question"], docs, history=state.get("history"))
-        return _result(state, answer=gen.answer, intent="rag", strategy="hybrid+rerank", events=events,
+        return _result(state, answer=gen.answer, intent="rag", strategy=plan.strategy, events=events,
                        citations=gen.citations, rejected=gen.rejected,
-                       evidence_ids=[(d.metadata or {}).get("chunk_id") for d in docs if d.metadata])
+                       evidence_ids=[(d.metadata or {}).get("chunk_id") for d in docs if d.metadata],
+                       confidence=1.0 if not gen.rejected else 0.0)
+
+    def _retrieve_for_plan(queries: list[str], category: str | None) -> list:
+        seen: dict[str, Any] = {}
+        for query in queries or []:
+            for doc in retrieve(query, category=category, top_k=TOP_K_RECALL):
+                metadata = doc.metadata or {}
+                key = str(metadata.get("chunk_id") or metadata.get("doc_id") or doc.page_content)
+                seen.setdefault(key, doc)
+        return list(seen.values())[:5]
 
     def reject_node(state: PipelineState) -> dict:
         return _result(state, answer=REJECT_ANSWER, intent="reject", strategy="", events=[], rejected=True)
@@ -169,11 +180,13 @@ def build_graph(
 
     def _result(state: PipelineState, answer: str, intent: str, strategy: str, events: list,
                 citations: list | None = None, rejected: bool = False,
-                evidence_ids: list | None = None) -> dict:
+                evidence_ids: list | None = None, confidence: float = 0.0) -> dict:
         result = {
             "intent": intent, "strategy": strategy, "answer": answer,
             "citations": citations or [], "rejected": rejected,
             "evidence_ids": evidence_ids or [],
+            "confidence": confidence,
+            "route_detail": state.get("route", {}).get("route_detail", {}),
             "latency_ms": _now_ms(state["start_ts"]),
         }
         cache.set(state["question"], state.get("category"), result, rejected=rejected)
@@ -212,7 +225,8 @@ def build_graph(
     g.add_conditional_edges("cache", lambda s: "hit" if s.get("cached") is not None else "miss",
                             {"hit": END, "miss": "router"})
     g.add_conditional_edges("router", lambda s: s["route"]["intent"],
-                            {"param": "param", "compat": "compat", "rag": "rag", "reject": "reject"})
+                            {"rag": "rag", "reject": "reject",
+                             "param": "param", "compat": "compat"})
     for node in ("param", "compat", "rag", "reject"):
         g.add_edge(node, END)
     return g.compile()
@@ -269,7 +283,7 @@ def answer_stream(question: str, category: str | None = None, session_id: str | 
         return
 
     router = Router()
-    route = router.route(question, history)
+    route = router.route(question, category)
     intent = route["intent"]
     yield {"type": "route", "intent": intent, "strategy": ""}
 
@@ -282,32 +296,25 @@ def answer_stream(question: str, category: str | None = None, session_id: str | 
         yield {"type": "done", "latency_ms": _now_ms(start), "rejected": True, "cache_hit": False}
         return
 
-    if intent == "param":
-        yield {"type": "progress", "stage": "slot_extraction"}
-        out = answer(question, category, session_id, history)
-        for ev in out.get("events", []) or []:
-            yield ev
-        yield {"type": "token", "content": out["answer"]}
-        yield {"type": "citation", "citations": out.get("citations", [])}
-        yield {"type": "done", "latency_ms": out["latency_ms"], "rejected": out.get("rejected", False), "cache_hit": False}
-        return
-
-    if intent == "compat":
-        yield {"type": "progress", "stage": "config_extraction"}
-        out = answer(question, category, session_id, history)
-        yield {"type": "token", "content": out["answer"]}
-        yield {"type": "citation", "citations": []}
-        yield {"type": "done", "latency_ms": out["latency_ms"], "rejected": out.get("rejected", False), "cache_hit": False}
-        return
-
-    # rag：图外流式（检索 → 逐 token 生成）
+    # RAG 流式：策略决策 → 多 query 检索 → 逐 token 生成。
+    strategy_engine = StrategyEngine()
+    plan = strategy_engine.plan(question, history)
+    yield {"type": "route", "intent": "rag", "strategy": plan.strategy}
+    yield {"type": "progress", "stage": "strategy"}
     yield {"type": "progress", "stage": "retrieval"}
-    docs = retrieve(question, category=category, top_k=5)
+    seen: dict[str, Any] = {}
+    for query in plan.queries or [question]:
+        for doc in retrieve(query, category=category, top_k=TOP_K_RECALL):
+            metadata = doc.metadata or {}
+            key = str(metadata.get("chunk_id") or metadata.get("doc_id") or doc.page_content)
+            seen.setdefault(key, doc)
+    docs = list(seen.values())[:5]
     if len(docs) < MIN_EVIDENCE_COUNT:
         yield {"type": "token", "content": REJECT_ANSWER}
         yield {"type": "citation", "citations": []}
         result = {"intent": "rag", "answer": REJECT_ANSWER, "citations": [], "rejected": True,
-                  "strategy": "no-evidence", "evidence_ids": [], "latency_ms": _now_ms(start)}
+                  "strategy": f"{plan.strategy}:no-evidence", "evidence_ids": [],
+                  "confidence": 0.0, "latency_ms": _now_ms(start)}
         cache.set(question, category, result, rejected=True)
         yield {"type": "done", "latency_ms": _now_ms(start), "rejected": True, "cache_hit": False}
         return
@@ -319,8 +326,9 @@ def answer_stream(question: str, category: str | None = None, session_id: str | 
     gen = Generator._parse("".join(buf), docs)
     result = {
         "intent": "rag", "answer": gen.answer, "citations": gen.citations,
-        "rejected": gen.rejected, "strategy": "hybrid+rerank",
+        "rejected": gen.rejected, "strategy": plan.strategy,
         "evidence_ids": [(d.metadata or {}).get("chunk_id") for d in docs if d.metadata],
+        "confidence": 1.0 if not gen.rejected else 0.0,
         "latency_ms": _now_ms(start),
     }
     cache.set(question, category, result, rejected=gen.rejected)
