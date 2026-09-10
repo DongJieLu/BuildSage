@@ -72,10 +72,16 @@ def parse_failed_rules(answer: str) -> list[str]:
     out = []
     for line in (answer or "").split("\n"):
         if line.strip().startswith("❌"):
-            m = re.search(r"R[1-5]", line)
+            m = re.search(r"R[1-9]", line)
             if m:
                 out.append(m.group(0))
     return out
+
+
+def answer_keys_hit(answer: str, keys: list[str]) -> bool:
+    """回答是否覆盖全部关键信息点（大小写不敏感的子串匹配）。"""
+    a = (answer or "").lower()
+    return all(k.lower() in a for k in keys)
 
 
 def evaluate(items: list[dict]) -> dict:
@@ -84,6 +90,7 @@ def evaluate(items: list[dict]) -> dict:
         "param": {"total": 0, "value_correct": 0},
         "compat": {"total": 0, "verdict_correct": 0, "rule_correct": 0},
         "rag_recall": {"total": 0, "hit": 0},
+        "rag_answer": {"total": 0, "hit": 0},
         "latency": {"param": [], "compat": [], "rag": [], "reject": []},
     }
     rag_samples = []  # (question, answer, contexts) 供 RAGAS
@@ -127,6 +134,12 @@ def evaluate(items: list[dict]) -> dict:
                 got_docs = {c.get("doc_name", "") for c in result["citations"]}
                 if any(d in got_docs for d in expected["doc_names"]):
                     metrics["rag_recall"]["hit"] += 1
+            # 回答内容准确率：回答是否覆盖金标关键信息点（"准确查询知识库"的硬指标）
+            keys = expected.get("answer_keys") or []
+            if keys:
+                metrics["rag_answer"]["total"] += 1
+                if result["intent"] == "rag" and answer_keys_hit(result["answer"], keys):
+                    metrics["rag_answer"]["hit"] += 1
             rag_samples.append((question, result["answer"], [c.get("text", "") for c in result.get("citations", [])]))
         if result["intent"] in metrics["latency"]:
             metrics["latency"][result["intent"]].append(result["latency_ms"])
@@ -225,6 +238,11 @@ def write_report(path: str, metrics: dict, ragas: dict | None, n_items: int, dur
         "### Recall@5（rag：引用文档命中应出文档）",
         "",
         f"- **{pct(rc['hit'], rc['total'])}**（{rc['hit']}/{rc['total']}）",
+        "",
+        "### 回答内容准确率（rag：回答覆盖金标关键信息点）",
+        "",
+        f"- **{pct(metrics['rag_answer']['hit'], metrics['rag_answer']['total'])}**"
+        f"（{metrics['rag_answer']['hit']}/{metrics['rag_answer']['total']}）",
         "",
         "### RAGAS（rag 类子集，DeepSeek 评委）",
         "",
